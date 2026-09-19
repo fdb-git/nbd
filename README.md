@@ -1,6 +1,6 @@
 # nbd
 
-Progetto NBD (Network Block Device) in due parti: un server che esporta
+Progetto NBD (Network Block Device) ha due componenti: un server che esporta
 dischi raw via `nbdkit` e un launcher QEMU che avvia una VM bootando da
 quell'esportazione in rete.
 
