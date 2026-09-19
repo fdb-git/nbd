@@ -105,11 +105,11 @@ Stessi certificati del resto (`--tls=…`, `--tls-certificates=$TLS_DIR_DEFAULT`
 
 Da confermare sul sistema target prima di implementare:
 
-- [ ] `nbdkit file dir=<DIR>`: selezione per nome (`/name.status`) funzionante con 1.36.3 (senza list multi-export);
-- [ ] `flush`/`fua` attivi per regular file (il client usa `NBD_CMD_FLUSH` per la durabilità);
-- [ ] comportamento con file < 4 KiB se rimossi/ricreati (restare sempre a 4 KiB via `truncate`, mai `rm` durante il run);
-- [ ] `stat`/size esposta = 4096; eventuale `--threads` non richiesto;
-- [ ] `cmd_list`/`cmd_status` con la nuova unit `state`: nessuna regressione a `extract_image` e `limit` parser.
+- [x] `nbdkit file dir=<DIR>`: selezione per nome (`/name.status`) funzionante con 1.36.3 (senza list multi-export) — verificato su nbdkit 1.36.3 (build user-space): `nbdsh demo.status → size 4096`;
+- [x] `flush`/`fua` attivi per regular file (il client usa `NBD_CMD_FLUSH` per la durabilità) — `can_flush=True`;
+- [x] comportamento con file < 4 KiB se rimossi/ricreati (restare sempre a 4 KiB via `truncate`, mai `rm` durante il run) — size esposta = stat del file (100 su file troncato a 100); il piano ripristina sempre 4096;
+- [x] `stat`/size esposta = 4096 (file 4 KiB); eventuale `--threads` non richiesto;
+- [ ] `cmd_list`/`cmd_status` con la nuova unit `state`: nessuna regressione a `extract_image` e `limit` parser — verificato nel Task 6 del piano (`tests/test-state-list-status.sh`).
 
 ---
 
@@ -134,6 +134,44 @@ Da confermare sul sistema target prima di implementare:
 
 ## 8. Open questions / fasi
 
+> Stato v1 (2026-09-19, opzione A confermata dall'utente): le tre open question qui
+> sotto restano escluse dal v1 e sono conservate come backlog. Il piano di
+> implementazione: `docs/superpowers/plans/2026-09-19-state-export.md`.
+
 - [ ] Rendere lo stato leggibile/scrivibile in modo sicuro da client non fidati (`--filter=ip`, `--filter=exportname`, o rotazione del marker) — fuori scope v1.
 - [ ] Integrare `--with-state` in `cmd_export` (creare il file `.status` insieme all'export dati) come comodità.
 - [ ] Advertising multi-export (nbdkit ≥1.38) per il discovery, se un domani l'host dati viene aggiornato.
+
+---
+
+Le verifiche §5 sopra sono
+state eseguite con nbdkit 1.36.3 (build user-space in `~/opt/nbdkit/sbin`) e
+`nbdsh`/`nbdinfo` 1.10.5 estratti in `~/opt/libnbd-tools/usr/bin` (nessuna
+modifica ai pacchetti di sistema); la macchina di prova ha apt nbdkit 1.24.1.
+
+## 9. Tooling di verifica "in home" (nessuna modifica di sistema)
+
+Sulla macchina di sviluppo (aarch64, jammy) apt offre solo nbdkit 1.24.1 e
+libnbd-bin 1.10.5, ma i tool client NON erano installati e la spec richiede
+di verificare su 1.36.3. Setup ripetibile (tutto in `$HOME`, nessun dpkg):
+
+```bash
+# nbdkit 1.36.3 -> ~/opt/nbdkit (/sbin/nbdkit)
+mkdir -p ~/src && cd ~/src
+curl -sO https://download.libguestfs.org/nbdkit/1.36-stable/nbdkit-1.36.3.tar.gz
+tar xf nbdkit-1.36.3.tar.gz && cd nbdkit-1.36.3
+./configure --prefix="$HOME/opt/nbdkit" --disable-gnutls
+make -j"$(nproc)" && make install
+
+# libnbd tools 1.10.5 (nbdsh/nbdinfo/nbdcopy) + binding python, estratti da .deb
+cd ~/src && apt-get download libnbd-bin python3-libnbd
+dpkg-deb -x libnbd-bin_*.deb ~/opt/libnbd-tools
+dpkg-deb -x python3-libnbd_*.deb ~/opt/libnbd-tools
+
+# ambiente per i test
+export PATH="$HOME/opt/nbdkit/sbin:$HOME/opt/libnbd-tools/usr/bin:$PATH"
+export PYTHONPATH="$HOME/opt/libnbd-tools/usr/lib/python3/dist-packages"
+```
+
+Su produzione (nbdkit 1.36.3 di sistema + libnbd tools) le stesse verifiche
+si eseguono senza PATH/PYTHONPATH custom.

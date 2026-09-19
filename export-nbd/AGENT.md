@@ -52,8 +52,18 @@ opzionale in `.env` (gitignorato, copia di `.env.example`).
 
 - Host: ARM64 (e.g. Odroid class), Ubuntu, nbd driver **built-in**
   (`/proc/devices` shows `43 nbd`; no module file → `modinfo nbd` fails).
-- nbdkit 1.36.3; libnbd tools installed: `nbdinfo`, `nbdsh`, `nbdcopy`, `nbddump`,
-  `nbdfuse`. `nbd-client` NOT installed.
+- nbdkit: su questa macchina apt offre solo **1.24.1** (jammy universe); per le verifiche
+  è disponibile **1.36.3 user-space** (`~/opt/nbdkit/sbin`, build da sorgente con
+  `--disable-gnutls`) e i tool libnbd **1.10.5** estratti dai .deb in
+  `~/opt/libnbd-tools/usr/bin` (`nbdsh`, `nbdinfo`, `nbdcopy`, `nbdfuse`;
+  `nbd-client` NON installato). Per i test:
+  `export PATH="$HOME/opt/nbdkit/sbin:$HOME/opt/libnbd-tools/usr/bin:$PATH"`
+  e `export PYTHONPATH="$HOME/opt/libnbd-tools/usr/lib/python3/dist-packages"`.
+  La macchina di produzione (target) ha nbdkit 1.36.3 di sistema + libnbd tools.
+- Verificato (docs/plan-state-export.md §5, gate `tests/test-state-nbdkit-verify.sh`):
+  `nbdkit file dir=<DIR>` seleziona l'export per nome (`<name>.status`) già su
+  1.36.3 senza list multi-export; `can_flush=True` su regular file; size esposta =
+  stat del file (sempre 4 KiB via `truncate`; mai `rm` durante il run).
 - nbdkit TLS is GnuTLS — **strict**:
   - CA cert must have `keyUsage=critical,keyCertSign,cRLSign` + `basicConstraints=CA:TRUE`.
   - `openssl x509 -req` does NOT support `-addext`, and `-extfile <(process subst)`
