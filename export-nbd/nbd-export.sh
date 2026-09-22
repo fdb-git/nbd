@@ -706,6 +706,115 @@ cmd_state_init() {
     return 0
 }
 
+# dump interpretato del record di stato (per 'show')
+state_dump() {
+    local name="$1" dir="${2:-$STATE_DIR}" f size st v ctime host uuid h
+    f="$(state_path "$name" "$dir")"
+    [ -f "$f" ] || die "state show: no state file $f (use: nbd-export state export $name)"
+    size="$(stat -c %s "$f")"
+    [ "$size" = 4096 ] || warn "state show: $f is $size bytes (expected 4096)"
+    st="$(dd if="$f" bs=1 skip=9 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')"; st="${st:-?}"
+    v="$(dd if="$f" bs=1 skip=8 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')"; v="${v:-?}"
+    ctime="$(read_u64_le "$f" 372)"
+    host="$(dd if="$f" bs=1 skip=16 count=64 2>/dev/null | tr -d '\0')"
+    uuid="$(dd if="$f" bs=1 skip=80 count=36 2>/dev/null | tr -d '\0')"
+    h="$(dd if="$f" bs=1 skip=116 count=256 2>/dev/null | tr -d '\0')"
+    printf 'file:     %s\n' "$f"
+    printf 'size:     %s\n' "$size"
+    printf 'magic:    NBDST (version %s)\n' "$v"
+    printf 'state:    %s\n' "$(state_name_of "$st")"
+    printf 'owner:    %s\n' "${host:--}"
+    printf 'owner-id: %s\n' "${uuid:--}"
+    printf 'hash:     %s\n' "${h:--}"
+    printf 'ctime:    %s (%s)\n' "$ctime" "$(date -d "@$ctime" '+%F %T' 2>/dev/null || echo invalid)"
+}
+
+cmd_state_export() {
+    local name="" dir="$STATE_DIR" f size magic
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dir)  dir="$2"; shift 2 ;;
+            -h|--help) usage_state; exit 0 ;;
+            -*) die "state export: unknown option $1" ;;
+            *) [ -z "$name" ] && name="$1" || die "state export: too many arguments"; shift ;;
+        esac
+    done
+    [ -n "$name" ] || die "state export: missing <name>"
+    name_valid "$name" || die "state export: invalid name '$name'"
+    [ -d "$dir" ] || die "state export: state directory missing: $dir (run: nbd-export state init --dir $dir)"
+    f="$(state_path "$name" "$dir")"
+    if [ -f "$f" ]; then
+        size="$(stat -c %s "$f")"
+        magic="$(dd if="$f" bs=1 count=5 2>/dev/null | od -An -tc | tr -d ' \n')"
+        if [ "$size" -ne 4096 ]; then
+            warn "state export: $f is $size bytes, re-initialising to 4 KiB"
+            state_init_file "$name" "$dir"
+        elif [ "$magic" != "NBDST" ]; then
+            die "state export: $f exists but is not a state record (magic missing)"
+        fi
+    else
+        state_init_file "$name" "$dir"
+    fi
+    if [ "$(id -u)" = 0 ]; then
+        chown "$(stat -c %U "$dir"):$(stat -c %G "$dir")" "$f" 2>/dev/null || true
+    elif [ "$(stat -c %U "$f")" != "$(stat -c %U "$dir")" ]; then
+        warn "state export: file owner differs from state dir owner; the state unit may not serve it"
+    fi
+    echo "state file ready: $f (clean)"
+}
+
+cmd_state_set() {
+    local name="" state="" dir="$STATE_DIR"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dir)  dir="$2"; shift 2 ;;
+            -h|--help) usage_state; exit 0 ;;
+            -*) die "state set: unknown option $1" ;;
+            *) if [ -z "$name" ]; then name="$1"
+               elif [ -z "$state" ]; then state="$1"
+               else die "state set: too many arguments"; fi
+               shift ;;
+        esac
+    done
+    [ -n "$name" ] || die "state set: missing <name>"
+    [ -n "$state" ] || die "state set: missing <clean|committing|committed>"
+    state_set_marker "$name" "$state" "$dir"
+    echo "state $name: $state"
+}
+
+cmd_state_show() {
+    local name="" dir="$STATE_DIR"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dir)  dir="$2"; shift 2 ;;
+            -h|--help) usage_state; exit 0 ;;
+            -*) die "state show: unknown option $1" ;;
+            *) [ -z "$name" ] && name="$1" || die "state show: too many arguments"; shift ;;
+        esac
+    done
+    [ -n "$name" ] || die "state show: missing <name>"
+    state_dump "$name" "$dir"
+}
+
+cmd_state_remove() {
+    local name="" dir="$STATE_DIR" f
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dir)  dir="$2"; shift 2 ;;
+            -h|--help) usage_state; exit 0 ;;
+            -*) die "state remove: unknown option $1" ;;
+            *) [ -z "$name" ] && name="$1" || die "state remove: too many arguments"; shift ;;
+        esac
+    done
+    [ -n "$name" ] || die "state remove: missing <name>"
+    name_valid "$name" || die "state remove: invalid name '$name'"
+    f="$(state_path "$name" "$dir")"
+    [ -f "$f" ] || die "state remove: no state file $f"
+    rm -f "$f"
+    rmdir "$dir" 2>/dev/null && echo "removed state file $f and empty dir $dir" \
+        || echo "removed state file $f"
+}
+
 cmd_tls_create() {
     local dir="$TLS_DIR_DEFAULT" host="" days=3650 force=0 san="" ip="" t
     while [ $# -gt 0 ]; do
