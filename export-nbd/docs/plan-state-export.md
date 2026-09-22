@@ -37,19 +37,12 @@ La difesa già progettata lato client (`launch-nbd`) è il marker `-committing` 
 
 ### Formato del file (4 KiB)
 
-| offset | size | campo |
-|---|---|---|
-| 0 | 8 | magic `NBDST\0\0\0\1` |
-| 8 | 1 | version (1) |
-| 9 | 1 | stato `enum {0=clean, 1=committing, 2=committed}` |
-| 10 | 6 | riservato (zero) |
-| 16 | 64 | owner: hostname (zero-padded) |
-| 80 | 36 | owner: UUID sessione (zero-padded) |
-| 116 | 256 | overlay hash (Base64URL) |
-| 372 | 8 | ctime unix (little-endian) |
-| 380 | 3716 | padding zero |
+**Storico — contratto canonico: `docs/status-format.md` (root del workspace).**
+La tabella originale di questa sezione vive ora nel doc root (corretta per l'escape del
+magic: `NBDST\0\0\0` a offset 0–7, version a offset 8) e nei test round-trip
+`tests/test-state-*.sh`; non duplicarla qui.
 
-Note:
+Note (semantica, invariata):
 - `committed` = commit completato ma marker non ancora azzerato (`clean`), per diagnosi.
 - Lo stato **non** è un lock: è un marker. Il fail-stop è responsabilità dei client che lo leggono.
 

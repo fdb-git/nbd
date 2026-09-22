@@ -73,3 +73,14 @@ sequenceDiagram
 1. Sul server: `nbd-export.sh export <immagine> --name fdbnode --port 10809`
 2. Sull'host: imposta `NBD_HOST`/`NBD_EXPORT` in `launch-nbd/.env`
 3. Avvia la VM con `launch-nbd/launch-nbd.sh`
+
+## Stato di commit cross-host (.status)
+
+Per proteggersi da commit qcow2 interrotti (disco ibrido), il server espone lo stato di
+commit di ogni export: file binari `<name>.status` (4 KiB) serviti dall'unit
+`nbd-export-state.service` su `nbd://HOST:10819/<name>.status`. Il launcher client legge
+il marker prima di toccare il disco e si ferma se lo trova `committing`.
+
+- Formato dei file: `docs/status-format.md` (contratto canonico)
+- Gestione lato server: `nbd-export.sh state init|export|set|show|remove` (dettagli in `export-nbd/AGENT.md`)
+- Contratto lato client: `launch-nbd/docs/plan-go.md` §5.10

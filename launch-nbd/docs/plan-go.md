@@ -232,17 +232,9 @@ Resta invariato il comportamento a `run` (ACCEL=auto ricontrolla a runtime, vedi
 
 **Formato del file di stato (4 KiB binari, scrittura mono-blocco zero-padded):**
 
-| offset | size | campo |
-|---|---|---|
-| 0 | 8 | magic `NBDST\0\0\0\1` |
-| 8 | 1 | version (1) |
-| 9 | 1 | stato `enum {0=clean, 1=committing, 2=committed}` |
-| 10 | 6 | riservato (zero) |
-| 16 | 64 | owner: hostname (zero-padded) |
-| 80 | 36 | owner: UUID sessione (zero-padded) |
-| 116 | 256 | overlay hash Base64URL (§5.8) |
-| 372 | 8 | ctime unix (little-endian) |
-| 380 | 3716 | padding zero |
+Storico — il contratto canonico (tabella completa) vive in `docs/status-format.md` (root
+del workspace); non duplicarlo qui. Sintesi invariata: magic 8 B + version a 8 + stato a 9,
+owner hostname/UUID, hash overlay Base64URL (§5.8), ctime LE, zero-padding a 4096.
 
 **Client `internal/nbd/client.go` esteso:**
 - `readState(export)` / `writeState(export, state, owner, hash)` riusano l'handshake e i `READ`/`WRITE` del mini-client, sempre sul singolo blocco da 4 KiB, inviando `NBD_CMD_FLUSH` dopo ogni scrittura;
