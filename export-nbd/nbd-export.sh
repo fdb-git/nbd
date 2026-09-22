@@ -208,6 +208,16 @@ state_set_marker() {
     printf '%b' "\\x0$enum" | dd of="$f" bs=1 seek=9 conv=notrunc status=none
 }
 
+# true se <unitfile> e' l'unit di stato (nbdkit file dir=...) e NON un export dati
+is_state_unit() {
+    grep -q -- ' file dir=' "$1" 2>/dev/null
+}
+
+# gli export dati non possono chiamarsi 'state' (collide con nbd-export-state.service)
+reserved_name_check() {
+    [ "$1" != "state" ] || die "export: name 'state' is reserved (state-export unit $UNIT_PREFIX-state.service)"
+}
+
 # --------------------------------------------------------------- validation
 tls_dir_validate() {
     local d="$1" f
@@ -470,6 +480,7 @@ cmd_export() {
     [ -e "$path" ] || die "export: UUID not found: ${TARGET_UUID:-$opt_uuid}"
     name="${name:-$(basename "$path")}"
     name_valid "$name" || die "export: invalid name '$name' (use [a-zA-Z0-9_-])"
+    reserved_name_check "$name"
     [ -f "$(unit_path "$name")" ] && [ "$force" = 0 ] && die "export: '$name' already exists (use --force to replace)"
 
     # create the image if requested / missing
@@ -585,6 +596,7 @@ cmd_list() {
     for u in "${units[@]}"; do
         name="${u##*/$UNIT_PREFIX-}"; name="${name%.service}"
         exec="$(sed -n 's/^ExecStart=//p' "$u")"
+        is_state_unit "$u" && continue   # unit di stato: non e' un export (vedi: nbd-export state)
         port="$(printf '%s\n' "$exec" | grep -oP -- '--port=\K[0-9]+' | head -1)"
         img="$(extract_image "$exec")"
         type="file"; [ -b "$img" ] && type="block"
@@ -601,6 +613,19 @@ cmd_status() {
     name_valid "$name" || die "status: invalid name '$name'"
     [ -f "$unit" ] || die "status: no export named '$name'"
     exec="$(sed -n 's/^ExecStart=//p' "$unit")"
+    if is_state_unit "$unit"; then
+        local sdir sport stls
+        sdir="$(printf '%s\n' "$exec" | grep -oP -- 'dir=\K[^ ]+' | head -1)"
+        sport="$(printf '%s\n' "$exec" | grep -oP -- '--port=\K[0-9]+' | head -1)"
+        stls="$(printf '%s\n' "$exec" | grep -oP -- '--tls=\K[a-z]+' | head -1 || true)"
+        printf 'unit:      %s\n' "$unit"
+        printf 'state dir: %s\n' "$sdir"
+        printf 'port:      %s\n' "${sport:-?}"
+        printf 'tls:       %s\n' "${stls:-off}"
+        printf 'state:     %s\n' "$(systemctl is-active "$UNIT_PREFIX-state.service" 2>/dev/null || echo unknown)"
+        printf 'notice:    state-export unit (data exports: nbd-export list)\n'
+        return 0
+    fi
     img="$(extract_image "$exec")"
     port="$(printf '%s\n' "$exec" | grep -oP -- '--port=\K[0-9]+' | head -1)"
     state="$(systemctl is-active "$UNIT_PREFIX-$name.service" 2>/dev/null || echo unknown)"
