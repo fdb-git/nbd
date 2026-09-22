@@ -210,6 +210,30 @@ sudo -u <user> ./nbd-export.sh export disk.img --name nope      # "requires root
 rm -f test2.img               # if created in 6.3
 ```
 
+### 6.9 State export (docs/plan-state-export.md §7)
+
+```bash
+# Gate nbdkit prima di tutto: tests/test-state-nbdkit-verify.sh
+
+# STATE_DIR sotto /var/lib (NON /tmp): l'unit usa PrivateTmp=yes + ProtectHome=yes
+# (hardening spec §4.3) che isolano /tmp, /var/tmp, /home, /root dall'nbdkit.
+./nbd-export.sh state init --dir /var/lib/state-test --port 10819
+./nbd-export.sh state export demo --dir /var/lib/state-test
+./nbd-export.sh state show demo --dir /var/lib/state-test        # clean
+nbdsh -u nbd://127.0.0.1:10819/demo.status -c 'h.pwrite(b"\x01", 9); h.flush()'
+systemctl restart nbd-export-state.service && sleep 1
+./nbd-export.sh state show demo --dir /var/lib/state-test        # committing (persistito)
+nbdinfo nbd://127.0.0.1:10819/demo.status                        # non tocca limit=1 dei dati
+./nbd-export.sh state set demo clean --dir /var/lib/state-test   # round-trip
+./nbd-export.sh state remove demo --dir /var/lib/state-test      # unit resta attiva
+./nbd-export.sh list                                             # unit di stato NON compare come export
+./nbd-export.sh status state                                     # blocco dedicato (state dir/porta/tls)
+# cleanup
+systemctl stop nbd-export-state.service
+rm -f /etc/systemd/system/nbd-export-state.service
+systemctl daemon-reload && rm -rf /var/lib/state-test
+```
+
 ## 7. Out of scope (do NOT implement without explicit user request)
 - nbd-client / client role, mounting exported devices
 - Config files / installer / daemonization of the script itself
