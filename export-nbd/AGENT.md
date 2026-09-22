@@ -35,6 +35,7 @@ opzionale in `.env` (gitignorato, copia di `.env.example`).
 | `--allow CIDR` → `--filter=ip allow=CIDR deny=all` | access control without TLS |
 | TLS via openssl (CA + server + client, SAN=IP+DNS) in `/etc/pki/nbdkit` | `certtool` not installed; GnuTLS accepts PEM |
 | `--luks-key FILE` → `--filter=luks passphrase=+FILE` | LUKS1 only (see §4) |
+| state unit = `nbdkit file dir=$STATE_DIR` su porta dedicata, NO `--filter=limit`/`multi-conn` | marker `committing` leggibile da client su altri host senza consumare la slot `limit=1` (docs/plan-state-export.md) |
 
 ## 3. Privilege model (verified against nbdkit source)
 
@@ -47,6 +48,9 @@ opzionale in `.env` (gitignorato, copia di `.env.example`).
   the user can't open them). Warning printed with hint:
   `usermod -aG disk <user>` + `--user=<user> --group=disk` (requires explicit `--group=disk`).
 - `--user/--group` flags override; `--as-root` forces root for block devices.
+- **State** (`state init`): gira come proprietario di `STATE_DIR` (`--user/--group` =
+  owner della dir, default `root:root`); `state export` chowna il file al proprietario
+  della dir se eseguito da root.
 
 ## 4. Environment facts & gotchas (IMPORTANT)
 
@@ -79,6 +83,10 @@ opzionale in `.env` (gitignorato, copia di `.env.example`).
 - A manually-started (daemonized, no `--foreground`) nbdkit ignored SIGTERM and
   needed `kill -9`. Managed units always use `--foreground` (no issue).
 - Mounted block devices: refused unless `--readonly` (warn) or `--force` (danger).
+- `state` e' un nome di export RISERVATO (collide con nbd-export-state.service):
+  `export --name state` e' rifiutato (reserved_name_check).
+- Lo stato NON e' un lock: `committing` e' un marker; il fail-stop e' dei client
+  che lo leggono (spec §3).
 
 ## 5. Script structure
 
@@ -94,11 +102,15 @@ nbd-export.sh
 ├── cmd_list          list (systemctl state + port, no live probe)
 ├── cmd_status        status [name]
 └── cmd_tls           tls create|status|remove
+└── cmd_state         state init|export|set|show|remove (marker 4 KiB, spec)
 ```
 Key helpers: `derive_user_group` (per-type privileges), `build_exec` (ExecStart
 assembly), `write_unit` (systemd unit with hardening: `NoNewPrivileges`,
 `PrivateTmp`, `ProtectHome`, `ProtectSystem=strict`+`ReadOnlyPaths` when
-`--readonly`), `extract_image`, `exec_escape`.
+`--readonly`), `extract_image`, `exec_escape`;
+state helpers: `write_state_unit`, `state_init_file`, `state_set_marker`,
+`state_dump`, `is_state_unit`, `reserved_name_check` (state-record 4 KiB, spec
+docs/plan-state-export.md §3).
 
 ## 6. Verification procedure (repeat these tests)
 
