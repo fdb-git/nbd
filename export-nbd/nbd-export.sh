@@ -341,6 +341,44 @@ write_unit() {
     chmod 644 "$unit"
 }
 
+# unit dedicata allo state export: niente limit/multi-conn/readonly (spec §2);
+# gira come proprietario di STATE_DIR; TLS come gli export dati (spec §4.4)
+write_state_unit() {
+    local dir="$1" port="$2" addr="$3" tls_mode="$4" tls_dir="$5" user="$6" group="$7"
+    local unit ex tls_args=""
+    unit="$(unit_path state)"
+    ex="/usr/bin/nbdkit --foreground file dir=$(exec_escape "$dir") --port=$port --ipaddr=$(exec_escape "$addr")"
+    if [ "$tls_mode" != off ]; then
+        tls_args="--tls=$tls_mode --tls-certificates=$(exec_escape "$tls_dir")"
+        [ "$tls_mode" = require ] && tls_args="$tls_args --tls-verify-peer"
+    fi
+    [ -n "$user" ] && ex="$ex --user=$(exec_escape "$user")"
+    [ -n "$group" ] && ex="$ex --group=$(exec_escape "$group")"
+    {
+        printf '[Unit]\n'
+        printf 'Description=NBD state export (nbdkit file dir=%s)\n' "$dir"
+        printf 'After=network-online.target\n'
+        printf 'Wants=network-online.target\n'
+        printf '\n[Service]\n'
+        printf 'Type=simple\n'
+        if [ -n "$tls_args" ]; then
+            printf 'ExecStart=%s %s\n' "$ex" "$tls_args"
+        else
+            printf 'ExecStart=%s\n' "$ex"
+        fi
+        printf 'Restart=on-failure\n'
+        printf 'RestartSec=2\n'
+        printf 'NoNewPrivileges=yes\n'
+        printf 'PrivateTmp=yes\n'
+        printf 'ProtectHome=yes\n'
+        printf 'ProtectSystem=full\n'
+        printf 'RestrictAddressFamilies=AF_INET AF_UNIX\n'
+        printf '\n[Install]\n'
+        printf 'WantedBy=multi-user.target\n'
+    } > "$unit"
+    chmod 644 "$unit"
+}
+
 # ---------------------------------------------------------------- subcommands
 cmd_create() {
     local path="" size="" fstype="" alloc=0 force=0
