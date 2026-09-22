@@ -55,6 +55,14 @@ if "$SCRIPT" state set demo bogus --dir "$D" >/dev/null 2>&1; then echo "FAIL: '
 if "$SCRIPT" state show nope --dir "$D" >/dev/null 2>&1; then echo "FAIL: show su file mancante"; fail=1; else echo "ok: show su file mancante -> errore"; fi
 if "$SCRIPT" state set nope clean --dir "$D" >/dev/null 2>&1; then echo "FAIL: set su file mancante"; fail=1; else echo "ok: set su file mancante -> errore"; fi
 
+VICTIM="$(dirname "$D")/victim.status"
+printf 'x%.0s' {1..4096} > "$VICTIM"
+b9v="$(u8 "$VICTIM" 9)"
+if "$SCRIPT" state set ../victim committing --dir "$D" >/dev/null 2>&1; then echo "FAIL: set ../victim accettato"; fail=1; else echo "ok: set ../victim rifiutato"; fi
+[ "$(u8 "$VICTIM" 9)" = "$b9v" ] && echo "ok: vittima fuori dir intatta" || { echo "FAIL: vittima modificata (traversal)"; fail=1; }
+if "$SCRIPT" state show ../victim --dir "$D" >/dev/null 2>&1; then echo "FAIL: show ../victim accettato"; fail=1; else echo "ok: show ../victim rifiutato"; fi
+rm -f "$VICTIM"
+
 echo "== state show: dump interpretato =="
 "$SCRIPT" state set demo committing --dir "$D" >/dev/null
 "$SCRIPT" state show demo --dir "$D" | grep -qF 'state:    committing' \

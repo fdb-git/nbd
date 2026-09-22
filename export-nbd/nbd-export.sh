@@ -803,6 +803,7 @@ cmd_state_set() {
     done
     [ -n "$name" ] || die "state set: missing <name>"
     [ -n "$state" ] || die "state set: missing <clean|committing|committed>"
+    name_valid "$name" || die "state set: invalid name '$name'"
     state_set_marker "$name" "$state" "$dir"
     echo "state $name: $state"
 }
@@ -818,6 +819,7 @@ cmd_state_show() {
         esac
     done
     [ -n "$name" ] || die "state show: missing <name>"
+    name_valid "$name" || die "state show: invalid name '$name'"
     state_dump "$name" "$dir"
 }
 
