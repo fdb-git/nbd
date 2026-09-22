@@ -15,6 +15,7 @@
 #   nbd-export.sh list
 #   nbd-export.sh remove <name>
 #   nbd-export.sh tls create|status|remove [options]
+#   nbd-export.sh state init|export|set|show|remove   # marker di commit (spec)
 #   nbd-export.sh help
 #
 # Default security behaviour:
@@ -637,6 +638,74 @@ cmd_tls() {
     esac
 }
 
+# --------------------------------------------------------------- state cmd
+cmd_state() {
+    local sub="${1:-help}"; shift || true
+    case "$sub" in
+        init)   cmd_state_init "$@" ;;
+        export) cmd_state_export "$@" ;;
+        set)    cmd_state_set "$@" ;;
+        show)   cmd_state_show "$@" ;;
+        remove) cmd_state_remove "$@" ;;
+        -h|--help|help) usage_state; exit 0 ;;
+        *) die "state: unknown subcommand '$sub' (see: nbd-export state help)" ;;
+    esac
+}
+
+cmd_state_init() {
+    local dir="$STATE_DIR" port="$STATE_PORT" addr="$STATE_ADDR"
+    local tls_mode=off tls_dir="$TLS_DIR_DEFAULT" force=0 user="" group=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dir)       dir="$2";  shift 2 ;;
+            --port)      port="$2"; shift 2 ;;
+            --addr)      addr="$2"; shift 2 ;;
+            --tls)       tls_mode=require; shift ;;
+            --tls=on)    tls_mode=on; shift ;;
+            --tls=require) tls_mode=require; shift ;;
+            --tls=off)   tls_mode=off; shift ;;
+            --tls-dir)   tls_dir="$2"; shift 2 ;;
+            --force)     force=1; shift ;;
+            -h|--help)   usage_state; exit 0 ;;
+            -*) die "state init: unknown option $1" ;;
+            *) die "state init: unexpected argument '$1'" ;;
+        esac
+    done
+    require_root
+    [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ] \
+        || die "state init: invalid port '$port'"
+    [ -e "$dir" ] && [ ! -d "$dir" ] && die "state init: $dir exists and is not a directory"
+    local unit ex
+    unit="$(unit_path state)"
+    if [ -f "$unit" ]; then
+        ex="$(sed -n 's/^ExecStart=//p' "$unit")"
+        if ! printf '%s\n' "$ex" | grep -q -- ' file dir='; then
+            [ "$force" = 1 ] || die "state init: $unit is a DATA export ('state' is a reserved name; use --force to replace)"
+        fi
+    fi
+    if [ -f "$unit" ] && [ "$force" = 1 ]; then
+        :   # sostituiamo l'unit attiva: la sua porta e' nostra
+    else
+        port_free "$port" || die "state init: port $port already in use (use --force to replace the running unit)"
+    fi
+    mkdir -p "$dir" || die "state init: cannot create $dir"
+    user="$(stat -c %U "$dir")"; group="$(stat -c %G "$dir")"
+    [ "$tls_mode" != off ] && tls_dir_validate "$tls_dir"
+    write_state_unit "$dir" "$port" "$addr" "$tls_mode" "$tls_dir" "$user" "$group"
+    systemctl daemon-reload
+    if [ "$force" = 1 ] && systemctl is-active --quiet "$UNIT_PREFIX-state.service"; then
+        systemctl restart "$UNIT_PREFIX-state.service"
+    elif ! systemctl start "$UNIT_PREFIX-state.service"; then
+        echo "unit failed to start; check: journalctl -u $UNIT_PREFIX-state.service -e" >&2
+        exit 1
+    fi
+    echo "state export serving $dir on nbd://$addr:$port/<name>.status"
+    echo "  unit:     $UNIT_PREFIX-state.service"
+    echo "  runs as:  $user:$group"
+    [ "$tls_mode" != off ] && echo "  tls:      $tls_mode (certs: $tls_dir)"
+    return 0
+}
+
 cmd_tls_create() {
     local dir="$TLS_DIR_DEFAULT" host="" days=3650 force=0 san="" ip="" t
     while [ $# -gt 0 ]; do
@@ -798,6 +867,29 @@ Creates: ca-cert.pem, ca-key.pem, server-cert.pem, server-key.pem,
 EOF
 }
 
+usage_state() {
+    cat <<'EOF'
+usage: nbd-export state init [--dir DIR] [--port N] [--addr IP] [--tls] [--force]
+       nbd-export state export <name> [--dir DIR]
+       nbd-export state set <name> <clean|committing|committed> [--dir DIR]
+       nbd-export state show <name> [--dir DIR]
+       nbd-export state remove <name> [--dir DIR]
+
+Commit-state marker per gli export NBD (docs/plan-state-export.md). Un file
+binario fisso 4 KiB <name>.status servito da un'unit dedicata
+(nbd-export-state.service, SENZA --filter=limit) cosi' che client su altri
+host vedano 'committing' prima di toccare un disco. Il launcher client scrive
+il marker via NBD + FLUSH; 'state set' e' il percorso amministrativo (scrive
+solo il byte di stato, non tocca owner/hash/ctime).
+  --dir DIR    directory di stato (default /var/lib/launch-nbd/state)
+  --port N     porta dell'unit di stato (default 10819)
+  --addr IP    indirizzo di ascolto (default 0.0.0.0)
+  --tls        richiedi TLS + verifica certificato client (--tls=on: solo cifratura)
+  --tls-dir D  directory certificati (default /etc/pki/nbdkit)
+  --force      sostituisci un'unit di stato esistente
+EOF
+}
+
 usage() {
     cat <<'EOF'
 nbd-export.sh - manage NBD exports (nbdkit) as systemd services
@@ -813,6 +905,7 @@ Commands:
   list                          table of all configured exports
   remove <name>                 stop + delete unit (image untouched)
   tls create|status|remove      TLS certificate management
+  state init|export|set|show|remove   commit-state marker (4 KiB <name>.status)
   help                          this text
 
 Client examples:
@@ -837,6 +930,7 @@ main() {
         list) cmd_list ;;
         remove) require_root; cmd_remove "${1:-}" ;;
         tls) cmd_tls "$@" ;;
+        state) cmd_state "$@" ;;
         help|-h|--help) usage; exit 0 ;;
         *) die "unknown command '$cmd' (see: nbd-export help)" ;;
     esac
