@@ -37,6 +37,11 @@ UNIT_PREFIX="nbd-export"
 UNIT_DIR="/etc/systemd/system"
 DEFAULT_PORT=10809
 DEFAULT_ADDR="0.0.0.0"
+# state-export: marker di commit in <name>.status su unit dedicata
+# (docs/plan-state-export.md; contratto formato 4 KiB in §3)
+STATE_DIR="/var/lib/launch-nbd/state"
+STATE_PORT=10819
+STATE_ADDR="0.0.0.0"
 TLS_DIR_DEFAULT="/etc/pki/nbdkit"
 FSTYPES="ext4 xfs btrfs vfat"
 NAME_RE='^[a-zA-Z0-9_.-]+$'
@@ -128,6 +133,78 @@ extract_image() {
         img="$(printf '%s\n' "$exec" | sed -n 's/.* file \([^ ]*\).*/\1/p')"
     fi
     printf '%s' "$img"
+}
+
+# ------------------------------------------------- state-export helpers
+# Record di stato: file binario fisso 4 KiB <name>.status.
+#   offset 0:  magic "NBDST\0\0\0" (8 byte)   [il "\1" della spec §3 e'
+#               il version byte qui sotto, a offset 8]
+#   offset 8:  version = 1
+#   offset 9:  stato 0=clean 1=committing 2=committed
+#   offset 16: owner hostname (64), 80: owner UUID (36), 116: hash (256)
+#   offset 372: ctime unix little-endian (8); pad a 4096 (truncate a 4 KiB)
+# Il file nasce tutto zero; i campi scritti sono quindi zero-padded.
+state_path() {
+    local name="$1" dir="${2:-$STATE_DIR}"
+    printf '%s/%s.status' "${dir%/}" "$name"
+}
+
+state_name_of() {
+    case "$1" in
+        0) echo clean ;;
+        1) echo committing ;;
+        2) echo committed ;;
+        *) echo "unknown($1)" ;;
+    esac
+}
+
+# scrive 8 byte little-endian a <off> (ctime)
+write_u64_le() {
+    local file="$1" off="$2" v="$3" hex="" out="" i
+    hex="$(printf '%016x' "$v")"
+    for ((i = 14; i >= 0; i -= 2)); do out+="\\x${hex:$i:2}"; done
+    printf '%b' "$out" | dd of="$file" bs=1 seek="$off" conv=notrunc status=none
+}
+
+read_u64_le() {
+    local file="$1" off="$2" hex="" rev="" i
+    hex="$(dd if="$file" bs=1 skip="$off" count=8 2>/dev/null | od -An -tx1 | tr -d ' \n')"
+    for ((i = 14; i >= 0; i -= 2)); do rev+="${hex:$i:2}"; done
+    printf '%d' "0x$rev"
+}
+
+# scrive una stringa al massimo <max> byte (il resto del campo resta zero)
+state_write_str() {
+    local file="$1" off="$2" max="$3" val="$4"
+    [ "${#val}" -le "$max" ] || die "state: value too long (max $max bytes)"
+    printf '%s' "$val" | dd of="$file" bs=1 seek="$off" conv=notrunc status=none
+}
+
+# inizializza (o re-inizializza) un record di stato a 4 KiB, stato=clean
+state_init_file() {
+    local name="$1" dir="${2:-$STATE_DIR}" f host
+    f="$(state_path "$name" "$dir")"
+    truncate -s 4096 "$f" || die "state: cannot create $f"
+    # magic(8) + version(1) + stato clean(1) -> byte 0..9
+    printf '%b\x01\x00' 'NBDST\0\0\0' | dd of="$f" bs=1 conv=notrunc status=none
+    host="$(hostname)"
+    state_write_str "$f" 16 64 "$host"
+    state_write_str "$f" 80 36 "$(cat /proc/sys/kernel/random/uuid)"
+    write_u64_le "$f" 372 "$(date +%s)"
+}
+
+# scrive SOLO il byte di stato (offset 9): non tocca owner/hash/ctime
+state_set_marker() {
+    local name="$1" state="$2" dir="${3:-$STATE_DIR}" f enum
+    case "$state" in
+        clean)      enum=0 ;;
+        committing) enum=1 ;;
+        committed)  enum=2 ;;
+        *) die "state set: invalid state '$state' (use clean|committing|committed)" ;;
+    esac
+    f="$(state_path "$name" "$dir")"
+    [ -f "$f" ] || die "state set: no state file $f (use: nbd-export state export $name)"
+    printf '%b' "\\x0$enum" | dd of="$f" bs=1 seek=9 conv=notrunc status=none
 }
 
 # --------------------------------------------------------------- validation
