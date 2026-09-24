@@ -144,6 +144,11 @@ modifica ai pacchetti di sistema); la macchina di prova ha apt nbdkit 1.24.1.
 
 ## 9. Tooling di verifica "in home" (nessuna modifica di sistema)
 
+> NOTA (2026-09-23): **superato** — nbdkit 1.36.3 è ora installato di sistema come deb
+> (`/usr/bin/nbdkit`, plugin in `/usr/lib/nbdkit/`, TLS+luks abilitati; sorgente e
+> packaging in `/root/src/nbdkit-1.36.3`). Il setup "in home" qui sotto non è più
+> necessario e resta come registrazione storica.
+
 Sulla macchina di sviluppo (aarch64, jammy) apt offre solo nbdkit 1.24.1 e
 libnbd-bin 1.10.5, ma i tool client NON erano installati e la spec richiede
 di verificare su 1.36.3. Setup ripetibile (tutto in `$HOME`, nessun dpkg):

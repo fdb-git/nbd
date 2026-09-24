@@ -56,12 +56,13 @@ opzionale in `.env` (gitignorato, copia di `.env.example`).
 
 - Host: ARM64 (e.g. Odroid class), Ubuntu, nbd driver **built-in**
   (`/proc/devices` shows `43 nbd`; no module file → `modinfo nbd` fails).
-- nbdkit: su questa macchina apt offre solo **1.24.1** (jammy universe); per le verifiche
-  è disponibile **1.36.3 user-space** (`~/opt/nbdkit/sbin`, build da sorgente con
-  `--disable-gnutls`) e i tool libnbd **1.10.5** estratti dai .deb in
+- nbdkit: di sistema ora **1.36.3** (deb locale `nbdkit_1.36.3-1_arm64.deb`, build da
+  `/root/src/nbdkit-1.36.3` con GnuTLS: **TLS e filter luks abilitati**; installato via apt
+  al posto del vecchio 1.24.1 di jammy). Binario in `/usr/bin/nbdkit`, plugin/filter in
+  `/usr/lib/nbdkit/`. Tool libnbd **1.10.5** estratti dai .deb in
   `~/opt/libnbd-tools/usr/bin` (`nbdsh`, `nbdinfo`, `nbdcopy`, `nbdfuse`;
   `nbd-client` NON installato). Per i test:
-  `export PATH="$HOME/opt/nbdkit/sbin:$HOME/opt/libnbd-tools/usr/bin:$PATH"`
+  `export PATH="$HOME/opt/libnbd-tools/usr/bin:$PATH"`
   e `export PYTHONPATH="$HOME/opt/libnbd-tools/usr/lib/python3/dist-packages"`.
   La macchina di produzione (target) ha nbdkit 1.36.3 di sistema + libnbd tools.
 - Verificato (docs/plan-state-export.md §5, gate `tests/test-state-nbdkit-verify.sh`):
@@ -87,6 +88,13 @@ opzionale in `.env` (gitignorato, copia di `.env.example`).
   `export --name state` e' rifiutato (reserved_name_check).
 - Lo stato NON e' un lock: `committing` e' un marker; il fail-stop e' dei client
   che lo leggono (spec §3).
+- Ciclo di vita legato (modello A, un server di stato per tutti gli export):
+  `export` crea automaticamente `<name>.status` e avvia il server su 10819 se
+  assente (`--no-state`/`--no-status` lo disattivano); `remove` elimina anche il
+  file `.status` (silenzioso, il server resta attivo); `list` mostra una riga
+  singola `state`. La dir servita dall'unit di stato e' la fonte di verita'
+  (non la costante `STATE_DIR`): custom `state init --dir` restano coerenti.
+  Suite: `tests/test-state-auto-export.sh`.
 
 ## 5. Script structure
 
@@ -96,13 +104,15 @@ nbd-export.sh
 ├── cmd_export        export <path> [--name --port --addr --user --group
 │                     --readonly --create --size --fstype --limit --multi-conn
 │                     --allow --luks-key --exit-last --log --tls --tls=on
-│                     --tls-dir --psk --threads --as-root --force]
+│                     --tls-dir --psk --threads --as-root --no-state --force]
 ├── cmd_simple        start|stop|restart|enable|disable <name> [--now]
 ├── cmd_remove        remove <name>
 ├── cmd_list          list (systemctl state + port, no live probe)
 ├── cmd_status        status [name]
 └── cmd_tls           tls create|status|remove
 └── cmd_state         state init|export|set|show|remove (marker 4 KiB, spec)
+                     (export crea il marker automaticamente --no-state per
+                     disattivarlo; remove elimina anche il file .status)
 ```
 Key helpers: `derive_user_group` (per-type privileges), `build_exec` (ExecStart
 assembly), `write_unit` (systemd unit with hardening: `NoNewPrivileges`,
@@ -238,7 +248,7 @@ systemctl restart nbd-export-state.service && sleep 1
 nbdinfo nbd://127.0.0.1:10819/demo.status                        # non tocca limit=1 dei dati
 ./nbd-export.sh state set demo clean --dir /var/lib/state-test   # round-trip
 ./nbd-export.sh state remove demo --dir /var/lib/state-test      # unit resta attiva
-./nbd-export.sh list                                             # unit di stato NON compare come export
+./nbd-export.sh list                                             # export dati + riga singola 'state'
 ./nbd-export.sh status state                                     # blocco dedicato (state dir/porta/tls)
 # cleanup
 systemctl stop nbd-export-state.service

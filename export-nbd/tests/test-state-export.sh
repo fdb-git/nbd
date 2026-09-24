@@ -76,7 +76,9 @@ b9="$(dd if="$F" bs=1 skip=9 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')"
 
 echo "== §7.4 nbdinfo sullo stato mentre la slot dati limit=1 e' occupata =="
 truncate -s 1M "$D/data.img"
-"$SCRIPT" export "$D/data.img" --name "$NAME" --port $DP 2>&1 || { echo "FAIL: export dati"; fail=1; }
+# --no-state: il test gestisce lo stato esplicitamente con --dir $D (il default
+# auto di export userebbe STATE_DIR di sistema; la dir di stato qui e' $D)
+"$SCRIPT" export "$D/data.img" --name "$NAME" --port $DP --no-state 2>&1 || { echo "FAIL: export dati"; fail=1; }
 poll_port $DP && echo "ok: export dati in ascolto su $DP" || { echo "FAIL: export dati non in ascolto"; fail=1; }
 nbdsh -u "nbd://127.0.0.1:$DP/$NAME" -c 'import time; time.sleep(6)' &
 HOLDER=$!

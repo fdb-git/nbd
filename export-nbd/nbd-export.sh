@@ -433,7 +433,7 @@ cmd_export() {
     local path="" name="" port="$DEFAULT_PORT" addr="$DEFAULT_ADDR"
     local opt_user="" opt_group="" opt_readonly=0 opt_create=0 size="" fstype=""
     local opt_limit=1 opt_multi_conn=0 opt_allow="" opt_luks="" opt_exit_last=0 opt_log=0
-    local tls_mode=off tls_dir="$TLS_DIR_DEFAULT" opt_psk="" force=0 as_root=0 opt_threads="" opt_uuid=""
+    local tls_mode=off tls_dir="$TLS_DIR_DEFAULT" opt_psk="" force=0 as_root=0 opt_threads="" opt_uuid="" opt_no_state=0
     local type="" unit
 
     while [ $# -gt 0 ]; do
@@ -463,6 +463,8 @@ cmd_export() {
             --as-root)   as_root=1; shift ;;
             --threads)   opt_threads="$2"; shift 2 ;;
             --uuid)      opt_uuid="$2"; shift 2 ;;
+            --no-state)  opt_no_state=1; shift ;;
+            --no-status) opt_no_state=1; shift ;;
             -h|--help)   usage_export; exit 0 ;;
             -*) die "export: unknown option $1" ;;
             *) [ -z "$path" ] && path="$1" || die "export: too many arguments"; shift ;;
@@ -556,6 +558,12 @@ cmd_export() {
         echo "unit failed to start; check: journalctl -u $UNIT_PREFIX-$name.service -e" >&2
         exit 1
     fi
+    # ciclo di vita legato: stato di commit auto (marker 4 KiB, spec status-format.md).
+    # --no-state/--no-status lo disattivano; se il server di stato non e' attivo
+    # viene inizializzato (auto-init, modello A: server permanente, enable al boot).
+    if [ "$opt_no_state" = 0 ]; then
+        export_state_auto "$name"
+    fi
     echo "exported: $path -> nbd://$addr:$port/$name  (unit: $UNIT_PREFIX-$name.service)"
     echo "  client:  nbdinfo nbd://$addr:$port/$name"
     if [ "$tls_mode" != off ]; then
@@ -577,7 +585,7 @@ cmd_simple() {
 }
 
 cmd_remove() {
-    local name="$1" unit
+    local name="$1" unit sdir="$STATE_DIR"
     unit="$(unit_path "$name")"
     name_valid "$name" || die "remove: invalid name '$name'"
     [ -f "$unit" ] || die "remove: no export named '$name'"
@@ -585,11 +593,18 @@ cmd_remove() {
     systemctl stop "$UNIT_PREFIX-$name.service" >/dev/null 2>&1 || true
     rm -f "$unit"
     systemctl daemon-reload
+    # ciclo di vita legato: elimina anche il file di stato (silenzioso). La dir
+    # servita dall'unit di stato e' la fonte di verita' (mod. A: il server resta).
+    if [ -f "$(unit_path state)" ]; then
+        sdir="$(sed -n 's/^ExecStart=//p' "$(unit_path state)" | grep -oP -- 'dir=\K[^ ]+' | head -1)"
+        sdir="${sdir:-$STATE_DIR}"
+    fi
+    rm -f "$(state_path "$name" "$sdir")"
     echo "removed export '$name' (image file untouched)"
 }
 
 cmd_list() {
-    local units name exec port img type u
+    local units name exec port img type u sdir
     units=("$UNIT_DIR"/$UNIT_PREFIX-*.service)
     [ -e "${units[0]}" ] || { echo "no exports configured"; return 0; }
     printf '%-20s %-6s %-9s %-6s %s\n' NAME TYPE STATE PORT IMAGE
@@ -604,6 +619,15 @@ cmd_list() {
             "$(systemctl is-active "$UNIT_PREFIX-$name.service" 2>/dev/null || echo unknown)" \
             "${port:-?}" "$img"
     done
+    if [ -f "$(unit_path state)" ]; then
+        # un solo server di stato per tutti gli export: riga singola 'state'
+        exec="$(sed -n 's/^ExecStart=//p' "$(unit_path state)")"
+        port="$(printf '%s\n' "$exec" | grep -oP -- '--port=\K[0-9]+' | head -1)"
+        sdir="$(printf '%s\n' "$exec" | grep -oP -- 'dir=\K[^ ]+' | head -1)"
+        printf '%-20s %-6s %-9s %-6s %s\n' "state" "state" \
+            "$(systemctl is-active "$UNIT_PREFIX-state.service" 2>/dev/null || echo unknown)" \
+            "${port:-?}" "${sdir:-?}"
+    fi
 }
 
 cmd_status() {
@@ -677,6 +701,33 @@ cmd_state() {
     esac
 }
 
+# Stato di commit collegato all'export dati (chiamato da cmd_export): garante
+# che il server di stato sia attivo e crea <name>.status nella dir servita.
+# L'unit di stato ESISTENTE e' la fonte di verita' (dir/port/TLS, non la
+# costante): se il servizio e' giu' viene solo RIAVVIATO (modello A: server
+# permanente), mai riscritto con i default. cmd_state_init e' solo per il
+# primo bootstrap (nessuna unit) o per unit omonime non di stato (fatal chiaro).
+export_state_auto() {
+    local name="$1" dir="$STATE_DIR"
+    if [ -f "$(unit_path state)" ]; then
+        dir="$(sed -n 's/^ExecStart=//p' "$(unit_path state)" | grep -oP -- 'dir=\K[^ ]+' | head -1)"
+        dir="${dir:-$STATE_DIR}"
+        if is_state_unit "$(unit_path state)"; then
+            if ! systemctl is-active --quiet "$UNIT_PREFIX-state.service" 2>/dev/null; then
+                # modello A: riaccende il server permanente senza riscriverlo
+                systemctl reset-failed "$UNIT_PREFIX-state.service" >/dev/null 2>&1 || true
+                systemctl start "$UNIT_PREFIX-state.service" \
+                    || die "state: unit $UNIT_PREFIX-state.service e' ferma e non riparte (vedi: systemctl status $UNIT_PREFIX-state.service)"
+            fi
+        else
+            cmd_state_init   # unit omonima non di stato (nome riservato): il fatal e' di init
+        fi
+    else
+        cmd_state_init       # primo bootstrap dell'host: crea l'unit con i default
+    fi
+    cmd_state_export "$name" --dir "$dir"
+}
+
 cmd_state_init() {
     local dir="$STATE_DIR" port="$STATE_PORT" addr="$STATE_ADDR"
     local tls_mode=off tls_dir="$TLS_DIR_DEFAULT" force=0 user="" group=""
@@ -724,6 +775,7 @@ cmd_state_init() {
         echo "unit failed to start; check: journalctl -u $UNIT_PREFIX-state.service -e" >&2
         exit 1
     fi
+    systemctl enable "$UNIT_PREFIX-state.service" >/dev/null 2>&1 || true  # modello A: permanente
     echo "state export serving $dir on nbd://$addr:$port/<name>.status"
     echo "  unit:     $UNIT_PREFIX-state.service"
     echo "  runs as:  $user:$group"
@@ -981,6 +1033,9 @@ Export a file or block device over NBD as a systemd service.
   --threads N      nbdkit worker threads
   --uuid UUID      use UUID to resolve /dev/disk/by-uuid/<UUID> (optional)
   --as-root        force root context for block devices (no warning)
+  --no-state       do NOT create the commit-status export <name>.status
+                   (default: export creates it and starts the state server
+                   on 10819 if down; alias: --no-status)
   --force          replace an existing export of the same name
 
 Privileges (verified against nbdkit source):
@@ -1017,6 +1072,9 @@ binario fisso 4 KiB <name>.status servito da un'unit dedicata
 host vedano 'committing' prima di toccare un disco. Il launcher client scrive
 il marker via NBD + FLUSH; 'state set' e' il percorso amministrativo (scrive
 solo il byte di stato, non tocca owner/hash/ctime).
+'export' crea il marker automaticamente (--no-state per disattivarlo) e
+avvia il server se assente; 'remove' elimina anche il file di stato.
+La dir servita dall'unit di stato e' la fonte di verita' (non la costante).
   --dir DIR    directory di stato (default /var/lib/launch-nbd/state)
   --port N     porta dell'unit di stato (default 10819)
   --addr IP    indirizzo di ascolto (default 0.0.0.0)

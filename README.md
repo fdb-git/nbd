@@ -84,3 +84,29 @@ il marker prima di toccare il disco e si ferma se lo trova `committing`.
 - Formato dei file: `docs/status-format.md` (contratto canonico)
 - Gestione lato server: `nbd-export.sh state init|export|set|show|remove` (dettagli in `export-nbd/AGENT.md`)
 - Contratto lato client: `launch-nbd/docs/plan-go.md` §5.10
+
+### Procedura (esempi)
+
+> L'export dati crea **automaticamente** il file `.status` (e avvia il server di stato
+> su 10819 se assente); `--no-state` (alias `--no-status`) lo disattiva.
+> `remove <name>` elimina anche il file di stato; il server (modello A) resta attivo.
+
+```bash
+# 1. export dati: auto-crea fdbhome.status + riusa/avvia il server di stato (10819)
+sudo ./nbd-export.sh export /dev/sda3 --name fdbhome --port 10809
+#    exported: ... -> nbd://0.0.0.0:10809/fdbhome  (unit: nbd-export-fdbhome.service)
+#    state file ready: /var/lib/launch-nbd/state/fdbhome.status (clean)
+
+#    opt-out: ./nbd-export.sh export disk.img --name altro --no-state
+
+# 2. verifica
+./nbd-export.sh list                          # tabella export dati + riga singola 'state'
+./nbd-export.sh state show fdbhome            # stato: clean + owner + ctime
+./nbd-export.sh status state                  # info server 10819 (dir, porta, tls)
+nbdinfo nbd://HOST:10819/fdbhome.status       # da qualsiasi host (non consuma la slot limit=1)
+
+# 3. ciclo di vita
+./nbd-export.sh remove fdbhome                # ferma+rimuove l'unit dati E fdbhome.status
+./nbd-export.sh state set fdbhome committing  # admin/test: marker clean|committing|committed
+./nbd-export.sh state remove fdbhome          # solo il file .status (export dati intatto)
+```

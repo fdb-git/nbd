@@ -19,11 +19,13 @@ write_fake_unit() {  # $1=nome, $2=exec
 write_fake_unit disk '/usr/bin/nbdkit --foreground --filter=limit file /srv/disk.img --exportname=disk --port=10809 --user=root --group=root'
 write_fake_unit state '/usr/bin/nbdkit --foreground file dir='"$D"' --port=10819 --ipaddr=0.0.0.0 --user=root --group=root'
 
-echo "== list esclude l'unit di stato =="
+echo "== list mostra l'unit di stato come riga singola =="
 out="$(cmd_list)"
 printf '%s\n' "$out" | grep -qF 'disk' && echo "ok: export dati listato" || { echo "FAIL: disk assente"; fail=1; }
-printf '%s\n' "$out" | grep -qE 'dir=.*status' && { echo "FAIL: unit di stato in list"; fail=1; } || echo "ok: unit di stato esclusa"
-printf '%s\n' "$out" | grep -qF 'dir=' && { echo "FAIL: colonna IMAGE con dir="; fail=1; } || echo "ok: nessuna IMAGE 'dir='"
+printf '%s\n' "$out" | grep -qE '^state[[:space:]]+state[[:space:]]+' && echo "ok: riga 'state' presente" || { echo "FAIL: riga state assente"; fail=1; }
+printf '%s\n' "$out" | grep -qF "$D" && echo "ok: dir di stato nella riga" || { echo "FAIL: dir assente"; fail=1; }
+printf '%s\n' "$out" | grep -qF 'dir=' && { echo "FAIL: colonna IMAGE con dir="; fail=1; } || echo "ok: nessuna IMAGE 'dir=' (solo export dati)"
+printf '%s\n' "$out" | grep -qE '^disk[[:space:]]+file' && echo "ok: colonne export dati OK" || { echo "FAIL: colonne disk"; fail=1; }
 
 echo "== status state: blocco dedicato, mai IMAGE dir= =="
 out="$(cmd_status state)"
