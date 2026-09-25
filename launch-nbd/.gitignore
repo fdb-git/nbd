@@ -1,2 +1,6 @@
 OVMF_VARS.fd
 .env
+
+# build Go + asset tree (non versionato: popolato da "make assets")
+bin/
+assets/

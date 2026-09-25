@@ -43,10 +43,22 @@ Implementato in `960470b` (12 commit `b2ab2e9..960470b`, master e
 - **ctime** è scritto una volta all'`init` del record e non viene aggiornato da
   `state set`/marker: indica la creazione del file, NON l'ultimo cambio di stato
 
-## 2. Client launcher (`launch-nbd`, in Go) — DA FARE
+## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0 fatta)
 
-Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata; nessun codice Go).
-Contratto del marker: **`docs/status-format.md`** (non le tabelle storiche dei plan).
+Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del marker:
+**`docs/status-format.md`** (non le tabelle storiche dei plan).
+
+- [x] **M0 (FATTO, B0)**: `go.mod` (go 1.22, `x/sys v0.30.0`, `toml v1.6.0`),
+      skeleton `cmd/launch-nbd` + `internal/{cli,config,accel}`, sottocomandi
+      `configure|install|run|commit|help` con exit-code 0/1/2 (unknown → 1,
+      install senza --iso → 2), wizard `configure` + TOML save/load
+      (round-trip, no-clobber) + `.env` legacy + `LAUNCH_NBD_*` env, preflight
+      accel Linux (kvm: /proc/cpuinfo + /dev/kvm) e Windows (WHPX/HAXM);
+      default di piattaforma build-tag; suite test verde (cli, config, wizard);
+      Makefile con guardia anti-sorpresa su `assets/<GOOS>`; cross-check
+      linux/amd64+arm64; toolchain/assets documentati in
+      `launch-nbd/docs/{build-toolchain,assets}.md`. run/commit: solo stub
+      (M2/M4)
 
 - [ ] **§5.10 stato cross-host**: estendere `internal/nbd/client.go` con
       `readState`/`writeState` + `NBD_CMD_FLUSH`; guard in
@@ -54,8 +66,6 @@ Contratto del marker: **`docs/status-format.md`** (non le tabelle storiche dei p
       con overlay); chiave `NBD_STATE_PORT` nei default di piattaforma. Nota:
       writeState scrive il blocco 4 KiB intero (owner+hash+stato) e la semantica
       di ctime va decisa (aggiornarlo o lasciarlo all'init server?)
-- [ ] **M0**: `go.mod`, skeleton package, sottocomandi, wizard `configure` + TOML
-      + preflight accel Linux
 - [ ] **M1**: `internal/assets` embed/extract/path-resolver + target make
       (`LAUNCH_NBD_ASSETS_DIR` per dev-mode, embed solo in release)
 - [ ] **M2**: `qemu/args.go` per `run`/`install` con golden test
@@ -76,3 +86,5 @@ Contratto del marker: **`docs/status-format.md`** (non le tabelle storiche dei p
       "creazione record" (lato server non lo tocca al marker)
 - [ ] Decisione coesistenza: `launch-nbd.sh` resta accanto al binario Go durante
       la transizione (consigliato) — da chiudere in Fase B, non toccare prima
+- [ ] Gate nbdkit-verify lato cliente: l'ordinamento "leggi stato → fingerprint →
+      avvio" in run/direct/install (plan §5.8.7+§5.10) da verificare in M4

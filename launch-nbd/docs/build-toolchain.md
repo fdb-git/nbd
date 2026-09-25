@@ -130,3 +130,16 @@ senza asset.
   cross `linux/amd64` + `linux/arm64` con `CGO_ENABLED=0`, dipendenze
   `x/sys v0.48.0` + `toml v1.6.0` fetch+compile ok. WSL non installato → i test
   Linux-only non girano su questo host.
+- 2026-09-24: **requisito go abbassato a 1.22** — `golang.org/x/sys v0.48.0`
+  richiede go 1.26 (troppo nuovo per host build datati): pin a
+  **`golang.org/x/sys v0.30.0`** (go 1.18) + `github.com/BurntSushi/toml v1.6.0`
+  (go 1.18) nel `go.mod`.
+
+## 8. Strumenti usati (log in itinere, Fase B)
+
+Registro dei tool realmente impiegati milestone per milestone, per i futuri
+rebuild su altri host. Asset embeddati: `docs/assets.md`.
+
+| Data | Fase | Strumenti | Note |
+|---|---|---|---|
+| 2026-09-24 | B0 (M0) | `go 1.27.1` (build nativa + cross `GOOS=linux GOARCH=amd64/arm64`), `gofmt`, `go vet`, `go test`, `go build`, deps `x/sys v0.30.0` + `toml v1.6.0` (go 1.22) | suite verde; cross-check amd64+arm64; nessun embed asset (M1); **WSL assente** → test Linux-only solo cross-compile |
