@@ -43,7 +43,7 @@ Implementato in `960470b` (12 commit `b2ab2e9..960470b`, master e
 - **ctime** è scritto una volta all'`init` del record e non viene aggiornato da
   `state set`/marker: indica la creazione del file, NON l'ultimo cambio di stato
 
-## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0–M3 fatte)
+## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0–M4 fatte)
 
 Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del marker:
 **`docs/status-format.md`** (non le tabelle storiche dei plan).
@@ -95,11 +95,31 @@ Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del ma
       `install` wira `iso.Resolve` (M4 avvia la VM). Test con `httptest`:
       discovery HTTP/locale, resume (verifica header Range), retry su 5xx e
       non-retry su 4xx, mismatch, file locale, secondo giro senza re-download
-- [ ] **M4**: `qemu/run.go` + `commit` + monitor + snapshot cleanup + **stato §5.10**
-      (mock NBD `WRITE`+`FLUSH`)
-- [ ] **M5**: `net/*` Linux (tap/bridged/dual) con revert testata
+- [x] **M4 (FATTO)**: `internal/nbd` (mini client NBD: handshake newstyle +
+      READ/WRITE/FLUSH; `Fingerprint` head/tail 64 KiB Base64URL; record di stato
+      4 KiB secondo `docs/status-format.md` con `ReadState`/`WriteState`+FLUSH),
+      `internal/nbd/nbdtest` (server NBD mock per i test); `qemu/overlay.go`
+      (lifecycle `<hash>(-committing|-committed).qcow2` + guardie `GuardRun`/
+      `GuardCommit`/`BlockedError`), `qemu/qemuimg.go` (create/commit, runner
+      iniettabile), `qemu/run.go` (foreground, inoltro segnali, cleanup sempre),
+      `qemu/commit.go` (rename live→committing PRIMA di qemu-img, resume,
+      delete-after; sequenza stato committing+FLUSH → clean+FLUSH).
+      Wiring in `main`: run/install avviano QEMU davvero (asset+overlay+OVMF),
+      guardia di stato cross-host, `install` ora funzionale (ISO+CD boot 0),
+      `commit` end-to-end. Test: mock NBD (protocollo, fingerprint
+      stabile/sensibile, stato over-the-wire), lifecycle commit
+      (successo/ripresa/fallimento/delete), guardie, `Run` exit-code
+      (re-exec), **integrazione commit↔stato NBD reale**. Smoke del binario:
+      run/install con QEMU finto (exit 0), errori senza NBD
+
+- [ ] **M5**: `net/*` Linux (tap/bridged/dual) con revert testata. NOTA: gli
+      args per tap/dual/bridged sono già costruiti (M2) ma **il device TAP non
+      viene ancora creato** (ip tuntap/addr/MASQUERADE + revert): in queste
+      modalità QEMU non parte finché M5 non implementa il setup
 - [ ] **M6**: `display`+`audio`, preflight accel Windows, Windows platform layer
-      (TAP-Windows6/Wintun)
+      (TAP-Windows6/Wintun). NOTA: oggi `display_mode=auto` ricade su vnc e
+      `audio_drv=auto` su none (nessun rilevamento di DISPLAY/socket audio) e il
+      client SPICE non viene lanciato: M6 completa la risoluzione runtime
 
 ## 3. Open / da decidere
 

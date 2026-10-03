@@ -11,14 +11,19 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"sync"
 
+	"github.com/fdb-git/nbd/launch-nbd/internal/accel"
 	"github.com/fdb-git/nbd/launch-nbd/internal/assets"
 	"github.com/fdb-git/nbd/launch-nbd/internal/cli"
 	"github.com/fdb-git/nbd/launch-nbd/internal/config"
 	"github.com/fdb-git/nbd/launch-nbd/internal/iso"
+	"github.com/fdb-git/nbd/launch-nbd/internal/nbd"
+	"github.com/fdb-git/nbd/launch-nbd/internal/qemu"
 )
 
-// run implements the CLI contract (exit codes):
+// run implementa il contratto CLI (exit codes):
 //
 //	0 ok | 1 errore generico | 2 uso errato (help su stderr).
 func run(argv []string, out, errw io.Writer, in io.Reader) int {
@@ -33,6 +38,7 @@ func run(argv []string, out, errw io.Writer, in io.Reader) int {
 		return 2 // uso errato (es. install senza --iso)
 	}
 
+	ctx := context.Background()
 	switch args.Action {
 	case cli.ActHelp:
 		cli.Usage(out)
@@ -47,82 +53,332 @@ func run(argv []string, out, errw io.Writer, in io.Reader) int {
 		return 0
 
 	case cli.ActInstall:
-		// M3: risolve l'ISO (URL -> download resume+checksum; file -> diretto).
-		// L'avvio della VM di provisioning (CD boot 0) arriva con M4.
-		res, err := iso.Resolve(context.Background(), iso.Options{
-			Arg: args.Iso,
-			Log: func(m string) {
-				if !args.Quiet {
-					fmt.Fprintln(out, m)
-				}
-			},
-		})
-		if err != nil {
-			fmt.Fprintln(errw, "error:", err)
-			return 1
+		isoPath, code := resolveISO(ctx, args, out, errw)
+		if code != 0 {
+			return code
 		}
-		if !args.Quiet {
-			fmt.Fprintf(out, "install: ISO pronta: %s\n", res.Path)
-			if res.Checksum != "" {
-				fmt.Fprintf(out, "  sha256: %s (%s)\n", res.Checksum, res.ChecksumSource)
-			}
-		}
-		fmt.Fprintln(errw, "install: avvio VM di provisioning non ancora implementato (Fase B M4)")
-		return 1
+		return launchVM(ctx, qemu.ModeInstall, isoPath, args, out, errw, in)
 
-	case cli.ActRun, cli.ActCommit:
-		cfg, err := config.Load(args.ConfigPath, func(m string) {
-			fmt.Fprintln(errw, "warning:", m)
-		})
-		if err != nil {
-			fmt.Fprintln(errw, "error:", err)
-			return 1
-		}
-		for _, kv := range args.Set { // CLI --set: precedenza massima
-			if err := cfg.SetKey(kv.Key, kv.Val); err != nil {
-				fmt.Fprintln(errw, "error:", err)
-				return 1
-			}
-		}
-		if errs := cfg.Validate(); len(errs) > 0 {
-			for _, e := range errs {
-				fmt.Fprintln(errw, "error:", e)
-			}
-			return 1
-		}
-		// asset embeddati (M1): estratti in temp (o dev-dir via
-		// LAUNCH_NBD_ASSETS_DIR). Fallback sui binari di sistema se assenti.
-		aset, err := assets.Prepare(assets.Options{DevDir: os.Getenv("LAUNCH_NBD_ASSETS_DIR")})
-		if err != nil {
-			fmt.Fprintln(errw, "warning: preparazione asset fallita:", err)
-			aset = &assets.Set{}
-		}
-		defer aset.Cleanup()
-		qemu := aset.Resolve("qemu")
-		if qemu == "" {
-			qemu = cfg.QEMU
-		}
-		if args.Action == cli.ActRun {
-			if !args.Quiet {
-				fmt.Fprintln(out, "launch-nbd run: config effettiva:")
-				fmt.Fprintf(out, "  nbd: %s (%s), export %s, state %d\n",
-					cfg.NBDHost, cfg.URI(), cfg.NBDExport, cfg.NBDStatePort)
-				fmt.Fprintf(out, "  vm:  %d MiB, %d cpu, accel %s, net %s, display %s\n",
-					cfg.MemMB, cfg.CPUs, cfg.Accel, cfg.NetMode, cfg.DisplayMode)
-				fmt.Fprintf(out, "  qemu: %s\n", qemu)
-				fmt.Fprintf(out, "  disk: %s\n", cfg.DiskMode)
-			}
-			fmt.Fprintln(errw, "run: avvio QEMU non ancora implementato (Fase B M4; builder args in internal/qemu)")
-			return 1
-		}
-		fmt.Fprintln(errw, "commit: overlay commit non ancora implementato (Fase B M4)")
-		return 1
+	case cli.ActRun:
+		return launchVM(ctx, qemu.ModeRun, "", args, out, errw, in)
+
+	case cli.ActCommit:
+		return cmdCommit(ctx, args, out, errw)
 	}
-
 	fmt.Fprintln(errw, "error: azione non gestita")
 	return 1
 }
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, os.Stdin))
+}
+
+// session: risorse temporanee di un'esecuzione, cleanup idempotente.
+type session struct {
+	workDir  string
+	cleanups []func()
+	once     sync.Once
+}
+
+func newSession() (*session, error) {
+	dir, err := os.MkdirTemp("", "launch-nbd-")
+	if err != nil {
+		return nil, err
+	}
+	return &session{workDir: dir}, nil
+}
+
+func (s *session) add(f func()) { s.cleanups = append(s.cleanups, f) }
+
+func (s *session) cleanup() {
+	s.once.Do(func() {
+		for i := len(s.cleanups) - 1; i >= 0; i-- {
+			s.cleanups[i]()
+		}
+		if s.workDir != "" {
+			_ = os.RemoveAll(s.workDir)
+		}
+	})
+}
+
+// loadCfg: config + --set + validazione. Ritorna (cfg, exit code != 0).
+func loadCfg(args cli.Args, errw io.Writer) (config.Cfg, int) {
+	cfg, err := config.Load(args.ConfigPath, func(m string) { fmt.Fprintln(errw, "warning:", m) })
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return cfg, 1
+	}
+	for _, kv := range args.Set {
+		if err := cfg.SetKey(kv.Key, kv.Val); err != nil {
+			fmt.Fprintln(errw, "error:", err)
+			return cfg, 1
+		}
+	}
+	if errs := cfg.Validate(); len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintln(errw, "error:", e)
+		}
+		return cfg, 1
+	}
+	return cfg, 0
+}
+
+// resolveISO: install --iso → ISO locale verificata (M3).
+func resolveISO(ctx context.Context, args cli.Args, out, errw io.Writer) (string, int) {
+	res, err := iso.Resolve(ctx, iso.Options{
+		Arg: args.Iso,
+		Log: func(m string) {
+			if !args.Quiet {
+				fmt.Fprintln(out, m)
+			}
+		},
+	})
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return "", 1
+	}
+	if !args.Quiet {
+		fmt.Fprintf(out, "install: ISO pronta: %s\n", res.Path)
+	}
+	return res.Path, 0
+}
+
+// stateGuard: guardia cross-host (§5.10): se lo stato è `committing`, fail-stop.
+// Export di stato irraggiungibile → warning (si prosegue con la guardia locale).
+func stateGuard(ctx context.Context, cfg config.Cfg, errw io.Writer) int {
+	if cfg.NBDStatePort <= 0 {
+		return 0
+	}
+	rec, err := nbd.ReadState(ctx, cfg.NBDHost, cfg.NBDStatePort, cfg.NBDExport)
+	if err != nil {
+		fmt.Fprintf(errw, "warning: export di stato non raggiungibile (%v): proseguo con la guardia locale\n", err)
+		return 0
+	}
+	if rec.State == nbd.StateCommitting {
+		fmt.Fprintf(errw, "error: commit interrotto lato server (owner %s, hash %s): completa prima 'launch-nbd commit'\n",
+			rec.OwnerHost, rec.Hash)
+		return 1
+	}
+	return 0
+}
+
+// launchVM: run/install → prepara overlay+firmware, costruisce gli args e avvia QEMU.
+func launchVM(ctx context.Context, mode qemu.Mode, isoPath string, args cli.Args, out, errw io.Writer, in io.Reader) int {
+	cfg, code := loadCfg(args, errw)
+	if code != 0 {
+		return code
+	}
+	aset, err := assets.Prepare(assets.Options{DevDir: os.Getenv("LAUNCH_NBD_ASSETS_DIR")})
+	if err != nil {
+		fmt.Fprintln(errw, "warning: preparazione asset fallita:", err)
+		aset = &assets.Set{}
+	}
+	defer aset.Cleanup()
+
+	sess, err := newSession()
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return 1
+	}
+	defer sess.cleanup()
+
+	if code := stateGuard(ctx, cfg, errw); code != 0 {
+		return code
+	}
+
+	// overlay locale (disk_mode=overlay o --snapshot) con fingerprint + guardie
+	overlayFile, code := prepareOverlay(ctx, cfg, args, aset, sess, errw)
+	if code != 0 {
+		return code
+	}
+
+	_, varsCopy := firmware(aset, sess, errw)
+
+	facts := qemu.Facts{
+		Mode:        mode,
+		Snapshot:    args.Snapshot,
+		OverlayFile: overlayFile,
+		ISOFile:     isoPath,
+		KVM:         kvmAvailable(),
+		VarsCopy:    varsCopy,
+	}
+	if varsCopy != "" {
+		facts.OVMFCode = aset.Resolve("ovmf-code")
+		facts.OVMFVars = aset.Resolve("ovmf-vars")
+	}
+	res, err := qemu.Build(cfg, facts)
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return 1
+	}
+	if !args.Quiet {
+		for _, n := range res.Notes {
+			fmt.Fprintln(out, n)
+		}
+	}
+	qemuBin := aset.Resolve("qemu")
+	if qemuBin == "" {
+		qemuBin = cfg.QEMU
+	}
+	if !args.Quiet {
+		fmt.Fprintf(out, "[run] %s (%s, %d MiB, %d cpu)\n", qemuBin, mode, cfg.MemMB, cfg.CPUs)
+	}
+	rc, err := qemu.Run(ctx, qemu.RunOptions{
+		QEMU:    qemuBin,
+		Args:    res.Args,
+		In:      in,
+		Out:     out,
+		Err:     errw,
+		Cleanup: sess.cleanup,
+	})
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return 1
+	}
+	return rc
+}
+
+// prepareOverlay: risolve/crea l'overlay del disco (o snapshot throwaway).
+// Ritorna ("", 0) se il disco è diretto (nessun overlay).
+func prepareOverlay(ctx context.Context, cfg config.Cfg, args cli.Args, aset *assets.Set, sess *session, errw io.Writer) (string, int) {
+	snapshot := args.Snapshot
+	overlayMode := cfg.DiskMode == "overlay"
+	if !snapshot && !overlayMode {
+		return "", 0
+	}
+	img := aset.Resolve("qemu-img")
+	if img == "" {
+		img = cfg.QEMUImg
+	}
+	uri := cfg.URI()
+
+	if snapshot {
+		// throwaway: file in temp, cleanup su exit
+		f := filepath.Join(sess.workDir, "nbd-snap.qcow2")
+		if err := qemu.RunImg(img)(ctx, qemu.ImgCreateArgs(uri, f)...); err != nil {
+			fmt.Fprintln(errw, "error:", err)
+			return "", 1
+		}
+		sess.add(func() { _ = os.Remove(f) })
+		return f, 0
+	}
+
+	// overlay persistente: fingerprint + guardie (§5.8)
+	hash, err := nbd.Fingerprint(ctx, cfg.NBDHost, cfg.NBDPort, cfg.NBDExport)
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return "", 1
+	}
+	dir, err := filepath.Abs(cfg.OverlayDir)
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return "", 1
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return "", 1
+	}
+	path, st, _, gerr := qemu.GuardRun(dir, hash)
+	if gerr != nil {
+		fmt.Fprintln(errw, "error:", gerr)
+		return "", 1
+	}
+	switch st {
+	case qemu.OverlayCommitted:
+		// overlay vuoto già committato: torna "live" per nuovi delta
+		live := qemu.OverlayPath(dir, hash, qemu.OverlayLive)
+		if err := os.Rename(path, live); err != nil {
+			fmt.Fprintln(errw, "error:", err)
+			return "", 1
+		}
+		path = live
+	case qemu.OverlayLive:
+		// riusa
+	default:
+		// crea
+		live := qemu.OverlayPath(dir, hash, qemu.OverlayLive)
+		if err := qemu.RunImg(img)(ctx, qemu.ImgCreateArgs(uri, live)...); err != nil {
+			fmt.Fprintln(errw, "error:", err)
+			return "", 1
+		}
+		path = live
+	}
+	fmt.Fprintf(errw, "warning: overlay locale %s (le scritture restano locali fino a 'launch-nbd commit')\n", path)
+	return path, 0
+}
+
+// firmware: OVMF dagli asset; copia scrivibile della VARS nella workDir.
+// Se manca, ritorna ("", "") → SeaBIOS.
+func firmware(aset *assets.Set, sess *session, errw io.Writer) (string, string) {
+	code := aset.Resolve("ovmf-code")
+	vars := aset.Resolve("ovmf-vars")
+	if code == "" || vars == "" {
+		return "", ""
+	}
+	dst := filepath.Join(sess.workDir, "OVMF_VARS.fd")
+	if err := qemu.CopyFile(vars, dst); err != nil {
+		fmt.Fprintln(errw, "warning: copia OVMF_VARS fallita, uso SeaBIOS:", err)
+		return "", ""
+	}
+	return code, dst
+}
+
+// kvmAvailable: /dev/kvm utilizzabile (per accel=auto/kvm).
+func kvmAvailable() bool {
+	res := accel.Detect()
+	return res.Available && res.Mode == "kvm"
+}
+
+// cmdCommit: espelle l'overlay del disco corrente nel backing NBD (§5.8/§5.10).
+func cmdCommit(ctx context.Context, args cli.Args, out, errw io.Writer) int {
+	cfg, code := loadCfg(args, errw)
+	if code != 0 {
+		return code
+	}
+	aset, err := assets.Prepare(assets.Options{DevDir: os.Getenv("LAUNCH_NBD_ASSETS_DIR")})
+	if err != nil {
+		fmt.Fprintln(errw, "warning: preparazione asset fallita:", err)
+		aset = &assets.Set{}
+	}
+	defer aset.Cleanup()
+
+	img := aset.Resolve("qemu-img")
+	if img == "" {
+		img = cfg.QEMUImg
+	}
+	hash, err := nbd.Fingerprint(ctx, cfg.NBDHost, cfg.NBDPort, cfg.NBDExport)
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return 1
+	}
+	dir, err := filepath.Abs(cfg.OverlayDir)
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return 1
+	}
+	fmt.Fprintln(errw, "warning: nessuna VM deve usare l'overlay durante il commit")
+
+	var state qemu.StateAccess
+	if cfg.NBDStatePort > 0 {
+		state = qemu.NBDStateAccess{Host: cfg.NBDHost, Port: cfg.NBDStatePort, Export: cfg.NBDExport}
+	}
+	err = qemu.Commit(ctx, qemu.CommitOptions{
+		Dir:     dir,
+		Hash:    hash,
+		QEMUImg: img,
+		State:   state,
+		Log: func(m string) {
+			if !args.Quiet {
+				fmt.Fprintln(out, m)
+			}
+		},
+	})
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return 1
+	}
+	if !args.Quiet {
+		fmt.Fprintln(out, "commit: completato")
+	}
+	return 0
 }

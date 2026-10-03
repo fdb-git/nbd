@@ -23,6 +23,8 @@ var platformNames = map[string]string{
 	"qemu-img":      "qemu-img",
 	"viewer":        "remote-viewer",
 	"bridge-helper": "qemu-bridge-helper",
+	"ovmf-code":     "OVMF_CODE.fd",
+	"ovmf-vars":     "OVMF_VARS.fd",
 }
 
 func platformBinary(logical string) string { return platformNames[logical] }

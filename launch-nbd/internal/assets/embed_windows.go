@@ -19,9 +19,11 @@ func platformDir() string { return "windows" }
 
 // platformBinary: nome logico -> nome file Windows (.exe; niente bridge-helper).
 var platformNames = map[string]string{
-	"qemu":     "qemu-system-x86_64.exe",
-	"qemu-img": "qemu-img.exe",
-	"viewer":   "virt-viewer.exe",
+	"qemu":      "qemu-system-x86_64.exe",
+	"qemu-img":  "qemu-img.exe",
+	"viewer":    "virt-viewer.exe",
+	"ovmf-code": "OVMF_CODE.fd",
+	"ovmf-vars": "OVMF_VARS.fd",
 }
 
 func platformBinary(logical string) string { return platformNames[logical] }
