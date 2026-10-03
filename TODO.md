@@ -43,7 +43,7 @@ Implementato in `960470b` (12 commit `b2ab2e9..960470b`, master e
 - **ctime** è scritto una volta all'`init` del record e non viene aggiornato da
   `state set`/marker: indica la creazione del file, NON l'ultimo cambio di stato
 
-## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0–M1 fatte)
+## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0–M2 fatte)
 
 Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del marker:
 **`docs/status-format.md`** (non le tabelle storiche dei plan).
@@ -76,6 +76,17 @@ Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del ma
       popolamento reale dell'albero (binari QEMU/firmware) sul build host
 
 - [ ] **M2**: `qemu/args.go` per `run`/`install` con golden test
+- [x] **M2 (FATTO)**: `internal/qemu/args.go` — builder puro `Build(cfg, Facts)`
+      1:1 con la sezione ARGS dello script (ordine e valori): accel a due token,
+      cache_mode→write-cache/direct/no-flush, FW pflash/SeaBIOS, blockdev
+      NBD/qcow2, virtio-blk+bootindex, CD solo in install (boot 0) o secondario
+      (boot 1) in run, nic per modalità + hostfwd, virtio-serial/chardev per
+      display, vga+gl, display/spice, audio, rtc, monitor stdio/socket;
+      validazione enum con messaggi come lo script. 9 **golden file**
+      (`internal/qemu/testdata/*.golden`, rigenerabili con `-update`) +
+      test errori + fallback accel + boot order. Build è puro (nessun
+      FS/ambiente): i fatti runtime arrivano in `Facts`
+
 - [ ] **M3**: `iso` + `install` (download resume + SHA256 discovery, test httptest)
 - [ ] **M4**: `qemu/run.go` + `commit` + monitor + snapshot cleanup + **stato §5.10**
       (mock NBD `WRITE`+`FLUSH`)

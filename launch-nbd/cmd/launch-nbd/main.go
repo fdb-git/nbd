@@ -92,7 +92,7 @@ func run(argv []string, out, errw io.Writer, in io.Reader) int {
 				fmt.Fprintf(out, "  qemu: %s\n", qemu)
 				fmt.Fprintf(out, "  disk: %s\n", cfg.DiskMode)
 			}
-			fmt.Fprintln(errw, "run: generazione args QEMU non ancora implementata (Fase B M2)")
+			fmt.Fprintln(errw, "run: avvio QEMU non ancora implementato (Fase B M4; builder args in internal/qemu)")
 			return 1
 		}
 		fmt.Fprintln(errw, "commit: overlay commit non ancora implementato (Fase B M4)")
