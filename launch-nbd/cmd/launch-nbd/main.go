@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/fdb-git/nbd/launch-nbd/internal/assets"
 	"github.com/fdb-git/nbd/launch-nbd/internal/cli"
 	"github.com/fdb-git/nbd/launch-nbd/internal/config"
 )
@@ -69,6 +70,18 @@ func run(argv []string, out, errw io.Writer, in io.Reader) int {
 			}
 			return 1
 		}
+		// asset embeddati (M1): estratti in temp (o dev-dir via
+		// LAUNCH_NBD_ASSETS_DIR). Fallback sui binari di sistema se assenti.
+		aset, err := assets.Prepare(assets.Options{DevDir: os.Getenv("LAUNCH_NBD_ASSETS_DIR")})
+		if err != nil {
+			fmt.Fprintln(errw, "warning: preparazione asset fallita:", err)
+			aset = &assets.Set{}
+		}
+		defer aset.Cleanup()
+		qemu := aset.Resolve("qemu")
+		if qemu == "" {
+			qemu = cfg.QEMU
+		}
 		if args.Action == cli.ActRun {
 			if !args.Quiet {
 				fmt.Fprintln(out, "launch-nbd run: config effettiva:")
@@ -76,8 +89,8 @@ func run(argv []string, out, errw io.Writer, in io.Reader) int {
 					cfg.NBDHost, cfg.URI(), cfg.NBDExport, cfg.NBDStatePort)
 				fmt.Fprintf(out, "  vm:  %d MiB, %d cpu, accel %s, net %s, display %s\n",
 					cfg.MemMB, cfg.CPUs, cfg.Accel, cfg.NetMode, cfg.DisplayMode)
-				fmt.Fprintf(out, "  disk: %s%s\n", cfg.DiskMode,
-					map[bool]string{true: " (overlay)", false: ""}[cfg.DiskMode == "overlay"])
+				fmt.Fprintf(out, "  qemu: %s\n", qemu)
+				fmt.Fprintf(out, "  disk: %s\n", cfg.DiskMode)
 			}
 			fmt.Fprintln(errw, "run: generazione args QEMU non ancora implementata (Fase B M2)")
 			return 1

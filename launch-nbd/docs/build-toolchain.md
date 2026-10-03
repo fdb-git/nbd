@@ -55,11 +55,11 @@ sudo apt install qemu-system-x86 qemu-utils ovmf virt-viewer \
                  qemu-bridge-helper
 ```
 
-- `qemu-system-x86_64` → `assets/linux/qemu/`
-- `qemu-img` → `assets/linux/qemu/`
-- `/usr/share/edk2/ovmf/*.fd` → `assets/linux/ovmf/`
-- `remote-viewer` (o `virt-viewer`) → `assets/linux/tools/`
-- `qemu-bridge-helper` → `assets/linux/qemu/` (opzionale, rete bridged)
+- `qemu-system-x86_64` → `internal/assets/linux/qemu/`
+- `qemu-img` → `internal/assets/linux/qemu/`
+- `/usr/share/edk2/ovmf/*.fd` → `internal/assets/linux/ovmf/`
+- `remote-viewer` (o `virt-viewer`) → `internal/assets/linux/tools/`
+- `qemu-bridge-helper` → `internal/assets/linux/qemu/` (opzionale, rete bridged)
 
 Fedora/RHEL (host di riferimento nel piano): `dnf install golang make qemu-system-x86
 qemu-img edk2-ovmf virt-viewer` (percorsi firmware `/usr/share/edk2/ovmf/`).
@@ -67,13 +67,17 @@ qemu-img edk2-ovmf virt-viewer` (percorsi firmware `/usr/share/edk2/ovmf/`).
 ### 3.3 Host Windows (questa macchina — build `windows/amd64` completa)
 
 - Go 1.27.1 via scoop (`scoop install go`) + git-bash (make se serve: `scoop install make`)
-- Per `make assets` (Windows): **installazione QEMU per Windows** (direttore QEMU,
+- Per `make assets` (Windows): **installazione QEMU per Windows** (diretto QEMU,
   `qemu-system-x86_64.exe`, `qemu-img.exe`), `virt-viewer.exe` (client SPICE),
   driver **TAP-Windows6** (OpenVPN: `tapinstall.exe`/`tapctl.exe` + `.inf/.sys`),
-  **Wintun** (`wintun.dll`/`wintun.sys`, WireGuard) — copiati in `assets/windows/`
+  **Wintun** (`wintun.dll`/`wintun.sys`, WireGuard) — copiati in
+  `internal/assets/windows/`
 - Dev-mode: la chiave **`LAUNCH_NBD_ASSETS_DIR`** sostituisce l'extract del binario
   embed con una dir esterna → permette di sviluppare/testare (M0–M6) **senza**
-  popolare `assets/` (embed solo nelle build release)
+  popolare l'albero (embed solo nelle build release)
+- **GNU make non è installato su questo host dev Windows** (`scoop install make`
+  se serve): i target del Makefile si verificano sul build host; su Windows dev
+  si usano direttamente i comandi `go` (vedi §8)
 
 ### 3.4 Odroid aarch64 (Ubuntu jammy — build `linux/arm64`)
 
@@ -103,17 +107,17 @@ remote-viewer --version || virt-viewer --version
 ## 5. Contratto Makefile (da B0)
 
 ```make
-make assets          # popola assets/<GOOS> dalla piattaforma corrente (o QEMU_DIR)
-make build-linux     # GOOS=linux  GOARCH=amd64; FAIL se assets/linux/ è vuoto
-make build-windows   # GOOS=windows GOARCH=amd64; FAIL se assets/windows/ è vuoto
+make assets          # popola internal/assets/<GOOS> dalla piattaforma corrente (o QEMU_DIR)
+make build-linux     # GOOS=linux  GOARCH=amd64; FAIL se internal/assets/linux/ è vuoto
+make build-windows   # GOOS=windows GOARCH=amd64; FAIL se internal/assets/windows/ è vuoto
 make build           # piattaforma corrente
 make test            # go vet + go test ./...
 ```
 
 Regola anti-sorpresa: ogni target `build-<GOOS>` verifica la presenza di almeno un
-file non-stub in `assets/<GOOS>/` prima di lanciare `go build`, così un host
-sbagliato fallisce subito con un messaggio chiaro invece di produrre un binario
-senza asset.
+file non-marker in `internal/assets/<GOOS>/` prima di lanciare `go build`, così un
+host sbagliato fallisce subito con un messaggio chiaro invece di produrre un
+binario senza asset.
 
 ## 6. Dove si builda cosa (raccomandazione per il ciclo Fase B)
 
@@ -143,3 +147,4 @@ rebuild su altri host. Asset embeddati: `docs/assets.md`.
 | Data | Fase | Strumenti | Note |
 |---|---|---|---|
 | 2026-09-24 | B0 (M0) | `go 1.27.1` (build nativa + cross `GOOS=linux GOARCH=amd64/arm64`), `gofmt`, `go vet`, `go test`, `go build`, deps `x/sys v0.30.0` + `toml v1.6.0` (go 1.22) | suite verde; cross-check amd64+arm64; nessun embed asset (M1); **WSL assente** → test Linux-only solo cross-compile |
+| 2026-09-25 | **M1** | `//go:embed all:internal/assets/<GOOS>` + `embed_{linux,windows}.go`; `gofmt`, `go vet`, `go test` (nuovo package `internal/assets`), `go build` nativa/cross, smoke con asset finto | **`make` non installato su questo host** → guardia verificata a mano con `sh`; embed→estrazione→`Resolve`→`Cleanup` verificati end-to-end; dev-mode `LAUNCH_NBD_ASSETS_DIR` verificato |

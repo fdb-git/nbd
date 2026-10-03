@@ -1,6 +1,12 @@
 OVMF_VARS.fd
 .env
 
-# build Go + asset tree (non versionato: popolato da "make assets")
+# build Go
 bin/
-assets/
+
+# albero asset embeddato: NON versionato (popolato da "make assets" sull'host
+# giusto); restano tracciati solo i marker .keep che tengono l'embed compilabile
+internal/assets/linux/*
+!internal/assets/linux/.keep
+internal/assets/windows/*
+!internal/assets/windows/.keep

@@ -43,7 +43,7 @@ Implementato in `960470b` (12 commit `b2ab2e9..960470b`, master e
 - **ctime** è scritto una volta all'`init` del record e non viene aggiornato da
   `state set`/marker: indica la creazione del file, NON l'ultimo cambio di stato
 
-## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0 fatta)
+## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0–M1 fatte)
 
 Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del marker:
 **`docs/status-format.md`** (non le tabelle storiche dei plan).
@@ -66,8 +66,15 @@ Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del ma
       con overlay); chiave `NBD_STATE_PORT` nei default di piattaforma. Nota:
       writeState scrive il blocco 4 KiB intero (owner+hash+stato) e la semantica
       di ctime va decisa (aggiornarlo o lasciarlo all'init server?)
-- [ ] **M1**: `internal/assets` embed/extract/path-resolver + target make
-      (`LAUNCH_NBD_ASSETS_DIR` per dev-mode, embed solo in release)
+- [x] **M1 (FATTO)**: `internal/assets` — `embed_{linux,windows}.go`
+      (`//go:embed all:internal/assets/<GOOS>`, marker `.keep` versionati),
+      `Prepare`/`Resolve`/`Cleanup`/`Staged`, `extract` testabile con
+      `fstest.MapFS`, fallback a `cfg.QEMU` senza asset, dev-mode
+      `LAUNCH_NBD_ASSETS_DIR`; Makefile con guardia su `internal/assets/<GOOS>`
+      e target `check-assets`; wiring in `run` (summary mostra il qemu risolto);
+      verificato end-to-end con asset finto (embed→temp→cleanup). Manca solo il
+      popolamento reale dell'albero (binari QEMU/firmware) sul build host
+
 - [ ] **M2**: `qemu/args.go` per `run`/`install` con golden test
 - [ ] **M3**: `iso` + `install` (download resume + SHA256 discovery, test httptest)
 - [ ] **M4**: `qemu/run.go` + `commit` + monitor + snapshot cleanup + **stato §5.10**
