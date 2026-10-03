@@ -11,13 +11,19 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/fdb-git/nbd/launch-nbd/internal/accel"
 	"github.com/fdb-git/nbd/launch-nbd/internal/assets"
+	"github.com/fdb-git/nbd/launch-nbd/internal/audio"
 	"github.com/fdb-git/nbd/launch-nbd/internal/cli"
 	"github.com/fdb-git/nbd/launch-nbd/internal/config"
+	"github.com/fdb-git/nbd/launch-nbd/internal/display"
 	"github.com/fdb-git/nbd/launch-nbd/internal/iso"
 	"github.com/fdb-git/nbd/launch-nbd/internal/nbd"
 	"github.com/fdb-git/nbd/launch-nbd/internal/net"
@@ -195,9 +201,36 @@ func launchVM(ctx context.Context, mode qemu.Mode, isoPath string, args cli.Args
 
 	_, varsCopy := firmware(aset, sess, errw)
 
-	// rete TAP (M5, solo Linux): setup + revert nella sessione
+	// display / GL / audio: risoluzione runtime (M6)
+	dEnv := display.Env{
+		Graphical:  graphicalSession(),
+		GOOS:       runtime.GOOS,
+		LookPath:   lookPath,
+		HasFlatpak: func() bool { _, ok := lookPath("flatpak"); return ok },
+	}
+	disp, err := display.Resolve(cfg.DisplayMode, dEnv)
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return 1
+	}
+	gl, err := display.ResolveGL(cfg.GL, dEnv)
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return 1
+	}
+	aEnv := audio.Env{
+		UID:    audio.CurrentUID(),
+		Exists: func(p string) bool { _, err := os.Stat(p); return err == nil },
+	}
+	adrv, err := audio.Detect(cfg.AudioDrv, aEnv)
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
+		return 1
+	}
+
+	// rete TAP (M5/M6): setup + revert nella sessione
 	bridgedTap := ""
-	if code := setupNet(ctx, cfg, sess, errw, &bridgedTap); code != 0 {
+	if code := setupNet(ctx, cfg, aset, sess, errw, &bridgedTap); code != 0 {
 		return code
 	}
 
@@ -209,6 +242,9 @@ func launchVM(ctx context.Context, mode qemu.Mode, isoPath string, args cli.Args
 		KVM:         kvmAvailable(),
 		VarsCopy:    varsCopy,
 		BridgedTap:  bridgedTap,
+		DisplayMode: disp,
+		GL:          gl,
+		AudioDrv:    adrv,
 	}
 	if varsCopy != "" {
 		facts.OVMFCode = aset.Resolve("ovmf-code")
@@ -231,6 +267,20 @@ func launchVM(ctx context.Context, mode qemu.Mode, isoPath string, args cli.Args
 	if !args.Quiet {
 		fmt.Fprintf(out, "[run] %s (%s, %d MiB, %d cpu)\n", qemuBin, mode, cfg.MemMB, cfg.CPUs)
 	}
+
+	// client SPICE: lancio in background (come lo script: attesa 2s che il
+	// server ascolti), solo con display=spice
+	if disp == "spice" {
+		if argv, ok := display.Viewer(dEnv, cfg.SpicePort); ok {
+			launchViewer(argv)
+			if !args.Quiet {
+				fmt.Fprintf(out, "[spice] client: %s\n", strings.Join(argv, " "))
+			}
+		} else {
+			fmt.Fprintln(errw, "warning:", display.ViewerHint())
+		}
+	}
+
 	rc, err := qemu.Run(ctx, qemu.RunOptions{
 		QEMU:    qemuBin,
 		Args:    res.Args,
@@ -315,21 +365,19 @@ func prepareOverlay(ctx context.Context, cfg config.Cfg, args cli.Args, aset *as
 	return path, 0
 }
 
-// setupNet: prepara la rete host per i modi che la richiedono (M5, Linux).
-// tap/dual → TAP privato; bridged da root → TAP sul bridge (bridgedTap).
+// setupNet: prepara la rete host per i modi che la richiedono.
+// tap/dual → TAP privato (Linux: ip/iptables; Windows: TAP-Windows6).
+// bridged da root → TAP sul bridge (bridgedTap); su Windows → errore chiaro.
 // Il revert è registrato nella sessione (sempre eseguito).
-func setupNet(ctx context.Context, cfg config.Cfg, sess *session, errw io.Writer, bridgedTap *string) int {
+func setupNet(ctx context.Context, cfg config.Cfg, aset *assets.Set, sess *session, errw io.Writer, bridgedTap *string) int {
 	switch cfg.NetMode {
 	case "tap", "dual":
-		if !net.SupportsTap {
-			fmt.Fprintf(errw, "error: net_mode=%s non supportato su questa piattaforma (Windows/TAP-Windows6: Fase B M6)\n", cfg.NetMode)
-			return 1
-		}
 		s, err := net.SetupTap(ctx, net.NewSystem(), net.Config{
-			Dev:    cfg.TapDev,
-			Subnet: cfg.TapSubnet,
-			Log:    func(m string) { fmt.Fprintln(errw, m) },
-			Warn:   func(m string) { fmt.Fprintln(errw, "warning:", m) },
+			Dev:     cfg.TapDev,
+			Subnet:  cfg.TapSubnet,
+			Windows: net.WindowsConfig{TapCtl: aset.Resolve("tapctl")},
+			Log:     func(m string) { fmt.Fprintln(errw, m) },
+			Warn:    func(m string) { fmt.Fprintln(errw, "warning:", m) },
 		})
 		if err != nil {
 			fmt.Fprintln(errw, "error:", err)
@@ -337,7 +385,7 @@ func setupNet(ctx context.Context, cfg config.Cfg, sess *session, errw io.Writer
 		}
 		sess.add(s.Revert)
 	case "bridged":
-		if net.SupportsTap && net.IsRoot() {
+		if net.IsRoot() {
 			s, err := net.SetupBridge(ctx, net.NewSystem(), net.Config{
 				Log:  func(m string) { fmt.Fprintln(errw, m) },
 				Warn: func(m string) { fmt.Fprintln(errw, "warning:", m) },
@@ -351,6 +399,33 @@ func setupNet(ctx context.Context, cfg config.Cfg, sess *session, errw io.Writer
 		}
 	}
 	return 0
+}
+
+// graphicalSession: c'è una sessione grafica? (DISPLAY/WAYLAND su Unix; sempre
+// vero su Windows, dove l'ambiente desktop è implicito).
+func graphicalSession() bool {
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+}
+
+// lookPath: ricerca binari nel PATH.
+func lookPath(name string) (string, bool) {
+	p, err := exec.LookPath(name)
+	return p, err == nil
+}
+
+// launchViewer: avvia il client SPICE in background dopo 2s (il server deve
+// prima mettersi in ascolto). Fire-and-forget, come il subshell dello script.
+func launchViewer(argv []string) {
+	go func() {
+		time.Sleep(2 * time.Second)
+		cmd := exec.Command(argv[0], argv[1:]...)
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
+		_ = cmd.Start()
+	}()
 }
 
 // firmware: OVMF dagli asset; copia scrivibile della VARS nella workDir.

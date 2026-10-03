@@ -43,6 +43,15 @@ type Config struct {
 	Subnet string // rete privata host<->guest (192.168.100.0/24)
 	Log    func(string)
 	Warn   func(string)
+
+	// Windows: percorsi asset per TAP-Windows6 (solo piattaforma Windows).
+	Windows WindowsConfig
+}
+
+// WindowsConfig: parametri del setup TAP su Windows (Fase B M6).
+type WindowsConfig struct {
+	TapCtl string // path tapctl.exe (asset OpenVPN)
+	HWID   string // hardware id del driver (default tap0901)
 }
 
 // Session: risorse di rete create; Revert le disfa (idempotente).
@@ -98,7 +107,7 @@ func needsTunFix(sys System) (bool, string) {
 // SetupTap: rete privata host<->guest su un TAP (modalità tap/dual).
 // Crea il TAP se mancante, assegna <subnet>.1, lo alza e abilita
 // ip_forward + MASQUERADE. Tutto revertibile con Session.Revert.
-func SetupTap(ctx context.Context, sys System, cfg Config) (*Session, error) {
+func setupTapIPTools(ctx context.Context, sys System, cfg Config) (*Session, error) {
 	logf := cfg.Log
 	if logf == nil {
 		logf = func(string) {}
@@ -184,7 +193,7 @@ func SetupTap(ctx context.Context, sys System, cfg Config) (*Session, error) {
 
 // SetupBridge: crea un TAP e lo aggancia a un bridge (modalità bridged, root).
 // Ritorna la sessione; il nome del tap creato è in TapDev.
-func SetupBridge(ctx context.Context, sys System, cfg Config, bridgeIF string) (*Session, error) {
+func setupBridgeIPTools(ctx context.Context, sys System, cfg Config, bridgeIF string) (*Session, error) {
 	logf := cfg.Log
 	if logf == nil {
 		logf = func(string) {}

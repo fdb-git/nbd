@@ -85,7 +85,7 @@ func TestSetupTapRootFullFlow(t *testing.T) {
 	f.missing["iptables -t nat -C POSTROUTING -s 192.168.100.0/24 ! -o tap0 -j MASQUERADE"] = true
 	f.outputs["sysctl -n net.ipv4.ip_forward"] = "1\n"
 
-	s, err := SetupTap(context.Background(), f, Config{Dev: "tap0", Subnet: "192.168.100.0/24"})
+	s, err := setupTapIPTools(context.Background(), f, Config{Dev: "tap0", Subnet: "192.168.100.0/24"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestSetupTapNonRootUsesSudo(t *testing.T) {
 	f.root = false
 	f.missing["ip link show tap0"] = true
 	f.missing["sudo iptables -t nat -C POSTROUTING -s 192.168.100.0/24 ! -o tap0 -j MASQUERADE"] = true
-	if _, err := SetupTap(context.Background(), f, Config{Dev: "tap0", Subnet: "192.168.100.0/24"}); err != nil {
+	if _, err := setupTapIPTools(context.Background(), f, Config{Dev: "tap0", Subnet: "192.168.100.0/24"}); err != nil {
 		t.Fatal(err)
 	}
 	if !f.called("sudo ip tuntap add dev tap0") {
@@ -146,7 +146,7 @@ func TestSetupTapNoSudoFails(t *testing.T) {
 	f := newFake()
 	f.root = false
 	f.hasCmd["sudo"] = false
-	if _, err := SetupTap(context.Background(), f, Config{Dev: "tap0", Subnet: "192.168.100.0/24"}); err == nil {
+	if _, err := setupTapIPTools(context.Background(), f, Config{Dev: "tap0", Subnet: "192.168.100.0/24"}); err == nil {
 		t.Fatal("atteso errore senza sudo")
 	}
 }
@@ -160,7 +160,7 @@ func TestSetupTapIdempotent(t *testing.T) {
 	f.outputs["ip addr show dev tap0"] = "inet 192.168.100.1/24 scope global tap0\n"
 	f.outputs["sysctl -n net.ipv4.ip_forward"] = "0\n"
 	// "ip link show tap0" ok (tap esistente), "-C MASQUERADE" ok (già presente)
-	s, err := SetupTap(context.Background(), f, Config{Dev: "tap0", Subnet: "192.168.100.0/24"})
+	s, err := setupTapIPTools(context.Background(), f, Config{Dev: "tap0", Subnet: "192.168.100.0/24"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestSetupTapIdempotent(t *testing.T) {
 
 func TestSetupTapInvalidSubnet(t *testing.T) {
 	f := newFake()
-	if _, err := SetupTap(context.Background(), f, Config{Dev: "tap0", Subnet: "bogus"}); err == nil {
+	if _, err := setupTapIPTools(context.Background(), f, Config{Dev: "tap0", Subnet: "bogus"}); err == nil {
 		t.Fatal("atteso errore su subnet invalida")
 	}
 }
@@ -200,7 +200,7 @@ func TestSetupTapInvalidSubnet(t *testing.T) {
 func TestSetupBridge(t *testing.T) {
 	f := newFake()
 	f.root = true
-	s, err := SetupBridge(context.Background(), f, Config{Dev: "ignored"}, "br0")
+	s, err := setupBridgeIPTools(context.Background(), f, Config{Dev: "ignored"}, "br0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestSetupBridge(t *testing.T) {
 func TestSetupBridgeNonRootFails(t *testing.T) {
 	f := newFake()
 	f.root = false
-	if _, err := SetupBridge(context.Background(), f, Config{}, "br0"); err == nil {
+	if _, err := setupBridgeIPTools(context.Background(), f, Config{}, "br0"); err == nil {
 		t.Fatal("atteso errore senza root")
 	}
 }
@@ -237,7 +237,7 @@ func TestSetupBridgeMasterFailsReverts(t *testing.T) {
 	f := newFake()
 	f.root = true
 	f.missing["ip link set qemu-tap-4242 master br0"] = true
-	if _, err := SetupBridge(context.Background(), f, Config{}, "br0"); err == nil {
+	if _, err := setupBridgeIPTools(context.Background(), f, Config{}, "br0"); err == nil {
 		t.Fatal("atteso errore se il bridge non esiste")
 	}
 	if !f.called("ip tuntap del dev qemu-tap-4242") {

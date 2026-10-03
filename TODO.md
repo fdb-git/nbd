@@ -43,7 +43,7 @@ Implementato in `960470b` (12 commit `b2ab2e9..960470b`, master e
 - **ctime** è scritto una volta all'`init` del record e non viene aggiornato da
   `state set`/marker: indica la creazione del file, NON l'ultimo cambio di stato
 
-## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0–M5 fatte)
+## 2. Client launcher (`launch-nbd`, in Go) — M0–M6 fatte (Fase B completa)
 
 Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del marker:
 **`docs/status-format.md`** (non le tabelle storiche dei plan).
@@ -131,6 +131,21 @@ Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del ma
       (TAP-Windows6/Wintun). NOTA: oggi `display_mode=auto` ricade su vnc e
       `audio_drv=auto` su none (nessun rilevamento di DISPLAY/socket audio) e il
       client SPICE non viene lanciato: M6 completa la risoluzione runtime
+
+- [x] **M6 (FATTO)**: `internal/display` (Resolve auto→gtk/sdl/vnc con sessione
+      grafica, ResolveGL, Viewer remote-viewer/virt-viewer/flatpak) e
+      `internal/audio` (Detect auto→pipewire/pa/none dai socket, `CurrentUID`
+      build-tagged), entrambi con dipendenze iniettate e test ovunque. Wiring in
+      `main`: risoluzione runtime passata a `Facts`, **lancio client SPICE** in
+      background (2s, fire-and-forget come lo script) con warning se assente.
+      Layer Windows: `net/setup_windows.go` (TAP-Windows6 via `tapctl.exe` +
+      `netsh` address/up, revert con delete+dhcp, niente NAT/RRAS → warning;
+      bridged → errore chiaro), `SupportsTap=true`; asset logico `tapctl`.
+      README del client aggiornato (sezione Client Go + struttura). Preflight
+      accel Windows era già in M0 (`accel/detect_windows.go`: WHPX/HAXM).
+      Test: display (auto/GL/viewer), audio (auto/idempotenza), net Windows
+      (tapctl/netsh/revert/errori). NOTA: runtime reale Windows del TAP non
+      verificato (servono driver TAP-Windows6 + admin)
 
 ## 3. Open / da decidere
 

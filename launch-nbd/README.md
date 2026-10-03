@@ -186,11 +186,44 @@ accel hanno default in `.env.example`.
 | `SPICE_PORT` | `5930` | Porta del server SPICE |
 | `QEMU` / `QEMU_IMG` | `qemu-system-x86_64` / `qemu-img` | Binari da usare |
 
+## Client Go (Fase B, in corso)
+
+Riscrittura del launcher in un unico binario Go (`cmd/launch-nbd`), piano
+`docs/plan-go.md`. Stato: **M0–M6 implementate** (config, asset, args, ISO,
+run/commit/stato cross-host, rete, display/audio). Lo script `launch-nbd.sh`
+resta la sorgente operativa finché la parità non è verificata su host reale.
+
+```bash
+launch-nbd configure [--force]        # wizard -> launch-nbd.toml
+launch-nbd run [--snapshot] [--set k=v]
+launch-nbd install --iso <file|URL>
+launch-nbd commit
+launch-nbd help
+```
+
+Build (vedi `docs/build-toolchain.md` per i tool per host):
+
+```bash
+make build            # piattaforma corrente
+go build ./cmd/launch-nbd
+make test             # go vet + go test
+```
+
+Note: gli asset (QEMU, OVMF, viewer, driver) sono embeddati dall'albero
+`internal/assets/<GOOS>/` (inventario in `docs/assets.md`); in sviluppo si può
+usare `LAUNCH_NBD_ASSETS_DIR=<dir>` per evitare l'embed. La rete TAP su Linux
+richiede root/sudo; su Windows usa TAP-Windows6 (tapctl) e non supporta bridged.
+
 ## Struttura del repository
 
 | File | Descrizione |
 |---|---|
 | `launch-nbd.sh` | Il launcher QEMU (tutte le opzioni sopra, `--help` incluso) |
+| `cmd/launch-nbd/` | Client Go (Fase B): entrypoint e orchestrazione |
+| `internal/` | Package Go: cli, config, accel, assets, iso, nbd, qemu, net, display, audio |
+| `docs/plan-go.md` | Piano di riscrittura Go e contratto stato cross-host §5.10 |
+| `docs/build-toolchain.md` | Tool per host e log di build (in itinere) |
+| `docs/assets.md` | Inventario degli asset embeddati nel binario |
 | `.env` | Configurazione locale (gitignorata): i default della tua macchina |
 | `.env.example` | Template committato dei default (copia in `.env`) |
 | `OVMF_VARS.fd` | Copia scrivibile delle variabili NVRAM UEFI (creata al primo avvio da `/usr/share/edk2/ovmf/OVMF_VARS.fd` se mancante; contiene le variabili di boot) |

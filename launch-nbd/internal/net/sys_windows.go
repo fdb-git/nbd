@@ -11,7 +11,7 @@ import (
 
 // SupportsTap: su Windows la rete TAP arriva con la Fase B M6
 // (TAP-Windows6/Wintun): per ora i modi tap/dual/bridged danno un errore chiaro.
-const SupportsTap = false
+const SupportsTap = true
 
 // IsRoot: su Windows la nozione di root non esiste (servono privilegi admin,
 // gestiti dal layer M6).

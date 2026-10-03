@@ -67,3 +67,13 @@ func modeString(p os.FileMode) string {
 func itoa3(n uint32) string {
 	return string([]byte{byte('0' + (n/64)%8), byte('0' + (n/8)%8), byte('0' + n%8)})
 }
+
+// SetupTap: implementazione Linux (ip/iptables/sysctl).
+func SetupTap(ctx context.Context, sys System, cfg Config) (*Session, error) {
+	return setupTapIPTools(ctx, sys, cfg)
+}
+
+// SetupBridge: implementazione Linux (tap concreto agganciato al bridge).
+func SetupBridge(ctx context.Context, sys System, cfg Config, bridgeIF string) (*Session, error) {
+	return setupBridgeIPTools(ctx, sys, cfg, bridgeIF)
+}

@@ -82,7 +82,7 @@ func (s *Set) Resolve(logical string) string {
 		return ""
 	}
 	if s.dev {
-		for _, rel := range []string{"qemu/" + name, "tools/" + name, "ovmf/" + name, name} {
+		for _, rel := range []string{"qemu/" + name, "tools/" + name, "ovmf/" + name, "tap-ovpn/" + name, name} {
 			p := filepath.Join(s.Dir, filepath.FromSlash(rel))
 			if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
 				return p

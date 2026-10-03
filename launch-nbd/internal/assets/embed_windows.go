@@ -24,6 +24,7 @@ var platformNames = map[string]string{
 	"viewer":    "virt-viewer.exe",
 	"ovmf-code": "OVMF_CODE.fd",
 	"ovmf-vars": "OVMF_VARS.fd",
+	"tapctl":    "tapctl.exe",
 }
 
 func platformBinary(logical string) string { return platformNames[logical] }
