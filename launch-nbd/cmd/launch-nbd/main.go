@@ -20,6 +20,7 @@ import (
 	"github.com/fdb-git/nbd/launch-nbd/internal/config"
 	"github.com/fdb-git/nbd/launch-nbd/internal/iso"
 	"github.com/fdb-git/nbd/launch-nbd/internal/nbd"
+	"github.com/fdb-git/nbd/launch-nbd/internal/net"
 	"github.com/fdb-git/nbd/launch-nbd/internal/qemu"
 )
 
@@ -194,6 +195,12 @@ func launchVM(ctx context.Context, mode qemu.Mode, isoPath string, args cli.Args
 
 	_, varsCopy := firmware(aset, sess, errw)
 
+	// rete TAP (M5, solo Linux): setup + revert nella sessione
+	bridgedTap := ""
+	if code := setupNet(ctx, cfg, sess, errw, &bridgedTap); code != 0 {
+		return code
+	}
+
 	facts := qemu.Facts{
 		Mode:        mode,
 		Snapshot:    args.Snapshot,
@@ -201,6 +208,7 @@ func launchVM(ctx context.Context, mode qemu.Mode, isoPath string, args cli.Args
 		ISOFile:     isoPath,
 		KVM:         kvmAvailable(),
 		VarsCopy:    varsCopy,
+		BridgedTap:  bridgedTap,
 	}
 	if varsCopy != "" {
 		facts.OVMFCode = aset.Resolve("ovmf-code")
@@ -305,6 +313,44 @@ func prepareOverlay(ctx context.Context, cfg config.Cfg, args cli.Args, aset *as
 	}
 	fmt.Fprintf(errw, "warning: overlay locale %s (le scritture restano locali fino a 'launch-nbd commit')\n", path)
 	return path, 0
+}
+
+// setupNet: prepara la rete host per i modi che la richiedono (M5, Linux).
+// tap/dual → TAP privato; bridged da root → TAP sul bridge (bridgedTap).
+// Il revert è registrato nella sessione (sempre eseguito).
+func setupNet(ctx context.Context, cfg config.Cfg, sess *session, errw io.Writer, bridgedTap *string) int {
+	switch cfg.NetMode {
+	case "tap", "dual":
+		if !net.SupportsTap {
+			fmt.Fprintf(errw, "error: net_mode=%s non supportato su questa piattaforma (Windows/TAP-Windows6: Fase B M6)\n", cfg.NetMode)
+			return 1
+		}
+		s, err := net.SetupTap(ctx, net.NewSystem(), net.Config{
+			Dev:    cfg.TapDev,
+			Subnet: cfg.TapSubnet,
+			Log:    func(m string) { fmt.Fprintln(errw, m) },
+			Warn:   func(m string) { fmt.Fprintln(errw, "warning:", m) },
+		})
+		if err != nil {
+			fmt.Fprintln(errw, "error:", err)
+			return 1
+		}
+		sess.add(s.Revert)
+	case "bridged":
+		if net.SupportsTap && net.IsRoot() {
+			s, err := net.SetupBridge(ctx, net.NewSystem(), net.Config{
+				Log:  func(m string) { fmt.Fprintln(errw, m) },
+				Warn: func(m string) { fmt.Fprintln(errw, "warning:", m) },
+			}, cfg.BridgeIF)
+			if err != nil {
+				fmt.Fprintln(errw, "error:", err)
+				return 1
+			}
+			sess.add(s.Revert)
+			*bridgedTap = s.TapDev
+		}
+	}
+	return 0
 }
 
 // firmware: OVMF dagli asset; copia scrivibile della VARS nella workDir.

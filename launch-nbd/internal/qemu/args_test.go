@@ -76,6 +76,11 @@ func TestGoldenArgs(t *testing.T) {
 			c.NetMode = "bridged"
 			return c
 		}, Facts{Mode: ModeRun, KVM: true}},
+		{"run-bridged-root", func() config.Cfg {
+			c := baseCfg()
+			c.NetMode = "bridged"
+			return c
+		}, Facts{Mode: ModeRun, KVM: true, BridgedTap: "qemu-tap-777"}},
 		{"run-writethrough", func() config.Cfg {
 			c := baseCfg()
 			c.CacheMode = "writethrough"

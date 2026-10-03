@@ -43,7 +43,7 @@ Implementato in `960470b` (12 commit `b2ab2e9..960470b`, master e
 - **ctime** è scritto una volta all'`init` del record e non viene aggiornato da
   `state set`/marker: indica la creazione del file, NON l'ultimo cambio di stato
 
-## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0–M4 fatte)
+## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0–M5 fatte)
 
 Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del marker:
 **`docs/status-format.md`** (non le tabelle storiche dei plan).
@@ -112,10 +112,21 @@ Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del ma
       (re-exec), **integrazione commit↔stato NBD reale**. Smoke del binario:
       run/install con QEMU finto (exit 0), errori senza NBD
 
-- [ ] **M5**: `net/*` Linux (tap/bridged/dual) con revert testata. NOTA: gli
-      args per tap/dual/bridged sono già costruiti (M2) ma **il device TAP non
-      viene ancora creato** (ip tuntap/addr/MASQUERADE + revert): in queste
-      modalità QEMU non parte finché M5 non implementa il setup
+- [x] **M5 (FATTO)**: `internal/net` — logica TAP in file comune con `System`
+      iniettato (testabile ovunque con un fake): `SetupTap` (sblocco
+      `/dev/net/tun` con permessi salvati, `ip tuntap add`, addr `.1`, link up,
+      `ip_forward`, `MASQUERADE` con check `-C` idempotente), `SetupBridge`
+      (tap `qemu-tap-<pid>` su bridge, revert su fallimento), `Session.Revert`
+      in ordine inverso e idempotente; `sys_linux.go`/`sys_windows.go`
+      build-tagged (`SupportsTap`, `IsRoot`). Wiring in `main`: tap/dual →
+      `SetupTap`; bridged da root → `SetupBridge` (tap concreto negli args via
+      `Facts.BridgedTap`), altrimenti forma qemu-bridge-helper; revert sempre
+      nella sessione. Windows: messaggio chiaro "M6" (niente TAP-Windows6).
+      Test con `System` finto (9 casi: flusso completo, sudo/non-root, no-sudo,
+      idempotenza, revert/idempotenza, bridge, bridge fallito→revert). NOTA:
+      il runtime reale (`ip`/`iptables`) richiede Linux+root; qui solo
+      cross-compile linux/amd64+arm64 e test logici. Golden `run-bridged-root`
+
 - [ ] **M6**: `display`+`audio`, preflight accel Windows, Windows platform layer
       (TAP-Windows6/Wintun). NOTA: oggi `display_mode=auto` ricade su vnc e
       `audio_drv=auto` su none (nessun rilevamento di DISPLAY/socket audio) e il

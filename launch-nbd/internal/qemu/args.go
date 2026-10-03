@@ -52,6 +52,10 @@ type Facts struct {
 
 	// KVM: /dev/kvm disponibile (per accel=auto|kvm).
 	KVM bool
+
+	// BridgedTap: tap concreto creato dal layer net per net_mode=bridged (root);
+	// se vuoto si usa la forma con qemu-bridge-helper (br=).
+	BridgedTap string
 }
 
 // Result: args + note di log (il banner dello script; non confrontate dai golden).
@@ -171,7 +175,7 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 	add("-device", "usb-tablet,bus=xhci.0")
 
 	// --- rete -----------------------------------------------------------------
-	nic, err := netArgs(cfg)
+	nic, err := netArgs(cfg, f)
 	if err != nil {
 		return r, err
 	}
@@ -292,7 +296,7 @@ func cacheFlags(mode string) (wc, cd, cnf string, err error) {
 }
 
 // netArgs: NIC_ARGS per NET_MODE, con i port forward (PFX) sulle reti user-mode.
-func netArgs(cfg config.Cfg) ([]string, error) {
+func netArgs(cfg config.Cfg, f Facts) ([]string, error) {
 	pfx, err := portForwardPFX(cfg.PF)
 	if err != nil {
 		return nil, err
@@ -316,8 +320,14 @@ func netArgs(cfg config.Cfg) ([]string, error) {
 			"-device", "virtio-net-pci,netdev=priv0",
 		}, nil
 	case "bridged":
-		// forma con qemu-bridge-helper (deterministica); il caso root con tap
-		// concreto è risolto dal layer net (M5)
+		if f.BridgedTap != "" {
+			// tap concreto creato dal layer net (root)
+			return []string{
+				"-netdev", "tap,id=mynet0,ifname=" + f.BridgedTap + ",script=no,downscript=no",
+				"-device", "virtio-net-pci,netdev=mynet0",
+			}, nil
+		}
+		// forma con qemu-bridge-helper (non-root o helper configurato)
 		return []string{
 			"-netdev", "tap,id=mynet0,br=" + cfg.BridgeIF,
 			"-device", "virtio-net-pci,netdev=mynet0",
