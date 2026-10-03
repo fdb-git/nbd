@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"github.com/fdb-git/nbd/launch-nbd/internal/assets"
 	"github.com/fdb-git/nbd/launch-nbd/internal/cli"
 	"github.com/fdb-git/nbd/launch-nbd/internal/config"
+	"github.com/fdb-git/nbd/launch-nbd/internal/iso"
 )
 
 // run implements the CLI contract (exit codes):
@@ -45,9 +47,27 @@ func run(argv []string, out, errw io.Writer, in io.Reader) int {
 		return 0
 
 	case cli.ActInstall:
-		// contratto M0: --iso mancante -> uso+exit 2 (verificato da cli.Parse);
-		// il provisioning reale arriva con la Fase B M3 (ISO download+checksum).
-		fmt.Fprintln(errw, "install: provisioning non ancora implementato (Fase B M3)")
+		// M3: risolve l'ISO (URL -> download resume+checksum; file -> diretto).
+		// L'avvio della VM di provisioning (CD boot 0) arriva con M4.
+		res, err := iso.Resolve(context.Background(), iso.Options{
+			Arg: args.Iso,
+			Log: func(m string) {
+				if !args.Quiet {
+					fmt.Fprintln(out, m)
+				}
+			},
+		})
+		if err != nil {
+			fmt.Fprintln(errw, "error:", err)
+			return 1
+		}
+		if !args.Quiet {
+			fmt.Fprintf(out, "install: ISO pronta: %s\n", res.Path)
+			if res.Checksum != "" {
+				fmt.Fprintf(out, "  sha256: %s (%s)\n", res.Checksum, res.ChecksumSource)
+			}
+		}
+		fmt.Fprintln(errw, "install: avvio VM di provisioning non ancora implementato (Fase B M4)")
 		return 1
 
 	case cli.ActRun, cli.ActCommit:

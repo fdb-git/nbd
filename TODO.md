@@ -43,7 +43,7 @@ Implementato in `960470b` (12 commit `b2ab2e9..960470b`, master e
 - **ctime** è scritto una volta all'`init` del record e non viene aggiornato da
   `state set`/marker: indica la creazione del file, NON l'ultimo cambio di stato
 
-## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0–M2 fatte)
+## 2. Client launcher (`launch-nbd`, in Go) — IN CORSO (M0–M3 fatte)
 
 Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del marker:
 **`docs/status-format.md`** (non le tabelle storiche dei plan).
@@ -87,7 +87,14 @@ Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del ma
       test errori + fallback accel + boot order. Build è puro (nessun
       FS/ambiente): i fatti runtime arrivano in `Facts`
 
-- [ ] **M3**: `iso` + `install` (download resume + SHA256 discovery, test httptest)
+- [x] **M3 (FATTO)**: `internal/iso` — `IsURL`, `Resolve` (URL → download con
+      resume `Range: bytes=N-` + retry 3, discovery SHA256 in ordine allo script:
+      `SHA256SUMS`, `SHA256SUMS.txt`, `<url>.sha256`, `<dir>/<base>.sha256`,
+      `<dir>/SHA256SUMS`; verifica `crypto/sha256`; file locale diretto +
+      verifica opzionale accanto), `Download`/`HashFile`/`parseChecksum`.
+      `install` wira `iso.Resolve` (M4 avvia la VM). Test con `httptest`:
+      discovery HTTP/locale, resume (verifica header Range), retry su 5xx e
+      non-retry su 4xx, mismatch, file locale, secondo giro senza re-download
 - [ ] **M4**: `qemu/run.go` + `commit` + monitor + snapshot cleanup + **stato §5.10**
       (mock NBD `WRITE`+`FLUSH`)
 - [ ] **M5**: `net/*` Linux (tap/bridged/dual) con revert testata

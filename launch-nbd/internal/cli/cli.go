@@ -190,7 +190,7 @@ subcommands:
           senza chiedere (per CI/uso non interattivo)
   install  [--config <file>] --iso <file|URL>
           provisioning una-tantum di un export NBD nuovo tramite ISO
-          (download+checksum: Fase B M3)
+          (URL: download con resume + verifica SHA256; file: diretto)
   run      [--config <file>] [--snapshot] [--set k=v ...]  [--quiet]
           (default) boot dal disco NBD; --snapshot = overlay throwaway
           che prevale su disk_mode
