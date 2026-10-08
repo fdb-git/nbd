@@ -10,7 +10,9 @@
 #   NBD_DATA_PORT      default 10809       (export dati)
 #   NBD_STATE_PORT     default 10819       (export di stato)
 #   NBD_DATA_EXPORT    default fdbhome     (NON viene mai scritto)
-#   NBD_TEST_EXPORT    default e2e-state   (file .status di test, creato/rimosso)
+#   NBD_TEST_EXPORT    default e2e-state   (base dei file .status di test,
+#                      creati/rimossi; ai due package e2e sono aggiunti i suffissi
+#                      -nbd e -qemu per isolarli, girando con -p 1)
 #   NBD_EXPORT_SH      path a nbd-export.sh (ricerca automatica se assente)
 #   SKIP_DRYRUN=1      salta il dry-run con QEMU=/bin/echo
 #
@@ -69,19 +71,31 @@ else
     echo "nota: nbdinfo non nel PATH: salto la probe dell'export dati (opz.: export PATH=\"\$HOME/opt/libnbd-tools/usr/bin:\$PATH\")"
 fi
 
-step "crea il file di stato di test ($NBD_TEST_EXPORT.status)"
-"$EXPORT_SH" state export "$NBD_TEST_EXPORT" && ok "state export $NBD_TEST_EXPORT" || bad "state export fallito"
-"$EXPORT_SH" state set "$NBD_TEST_EXPORT" clean >/dev/null 2>&1 || true
+EXP_NBD="${NBD_TEST_EXPORT}-nbd"
+EXP_QEMU="${NBD_TEST_EXPORT}-qemu"
+step "crea i file di stato di test ($EXP_NBD.status, $EXP_QEMU.status)"
+for e in "$EXP_NBD" "$EXP_QEMU"; do
+    "$EXPORT_SH" state export "$e" && ok "state export $e" || bad "state export $e fallito"
+    "$EXPORT_SH" state set "$e" clean >/dev/null 2>&1 || true
+done
 
 step "suite unit (go test ./...)"
 ( cd "$root" && timeout 300 go test ./... ) && ok "suite unit" || bad "suite unit"
 
+# I due package e2e condividono lo stesso server: giran separatamente (-p 1) con
+# un export di stato dedicato ciascuno (nessuna race sul fixture).
 step "e2e NBD reale (tag e2e)"
-( cd "$root" && LAUNCH_NBD_E2E=1 \
-    NBD_HOST="$NBD_HOST" NBD_DATA_PORT="$NBD_DATA_PORT" NBD_STATE_PORT="$NBD_STATE_PORT" \
-    NBD_DATA_EXPORT="$NBD_DATA_EXPORT" NBD_TEST_EXPORT="$NBD_TEST_EXPORT" \
-    timeout 180 go test -tags e2e -v -count=1 ./internal/nbd ./internal/qemu -run E2E ) \
-    && ok "e2e NBD reale" || bad "e2e NBD reale"
+run_e2e() { # pkg export
+    ( cd "$root" && LAUNCH_NBD_E2E=1 \
+        NBD_HOST="$NBD_HOST" NBD_DATA_PORT="$NBD_DATA_PORT" NBD_STATE_PORT="$NBD_STATE_PORT" \
+        NBD_DATA_EXPORT="$NBD_DATA_EXPORT" NBD_TEST_EXPORT="$2" \
+        timeout 180 go test -tags e2e -v -count=1 -p 1 -run E2E "$1" )
+}
+if run_e2e ./internal/nbd "$EXP_NBD" && run_e2e ./internal/qemu "$EXP_QEMU"; then
+    ok "e2e NBD reale (nbd + qemu)"
+else
+    bad "e2e NBD reale"
+fi
 
 if [ "$SKIP_DRYRUN" != "1" ]; then
 step "dry-run: fingerprint + overlay reali + args (QEMU=/bin/echo)"
@@ -104,7 +118,9 @@ step "dry-run: fingerprint + overlay reali + args (QEMU=/bin/echo)"
 fi
 
 step "cleanup"
-"$EXPORT_SH" state remove "$NBD_TEST_EXPORT" >/dev/null 2>&1 && ok "rimosso $NBD_TEST_EXPORT.status" || echo "nota: state remove $NBD_TEST_EXPORT"
+for e in "$EXP_NBD" "$EXP_QEMU"; do
+    "$EXPORT_SH" state remove "$e" >/dev/null 2>&1 && ok "rimosso $e.status" || echo "nota: state remove $e"
+done
 "$EXPORT_SH" state show "$NBD_DATA_EXPORT" 2>/dev/null | grep -q "clean" \
     && ok "stato di $NBD_DATA_EXPORT = clean (invariato)" \
     || echo "ATTENZIONE: lo stato di $NBD_DATA_EXPORT non è clean — controllare"
