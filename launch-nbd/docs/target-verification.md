@@ -100,6 +100,8 @@ overlay di cui conosci i contenuti. Nessun'altra VM/client deve essere connesso
 | Sintomo | Causa probabile |
 |---|---|
 | `ReadState`/`Fingerprint`: connection refused | porta/ host errati, unit non attiva, firewall (10809/10819) |
+| probe TCP grezza sulla porta dati rifiutata | **normale con `limit=1`**: il filtro limita le connessioni; la verifica autorevole è `nbdinfo` o il nostro e2e (**non** una `/dev/tcp`) |
+| `nbdinfo` non trovato | export `PATH="$HOME/opt/libnbd-tools/usr/bin:$PATH"` (vedi `AGENTS.md`) |
 | Fork/errore dopo `Fingerprint` | un'altra VM/client tiene lo slot `limit=1` (chiudilo) |
 | `<test>.status` non esiste | manca `nbd-export.sh state export <test>` |
 | `can_flush`/write di stato falliscono | TLS attivo sull'unit di stato (qui è off) o permessi owner della dir |
