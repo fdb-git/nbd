@@ -6,8 +6,10 @@ documentazione propria — partire sempre dai link sotto prima di toccare codice
 - `export-nbd/` — **server** NBD: `nbd-export.sh` (bash, unit systemd nbdkit).
   Doc agente: `export-nbd/AGENT.md`; spec storiche in `export-nbd/docs/`.
 - `launch-nbd/` — **client** QEMU launcher: `launch-nbd.sh` (bash) e piano Go in
-  `launch-nbd/docs/plan-go.md` (il client Go non è ancora implementato). Toolchain
-  per rebuild su altri host: `launch-nbd/docs/build-toolchain.md`.
+  `launch-nbd/docs/plan-go.md` (client Go implementato: Fase B M0–M6). Toolchain
+  per rebuild su altri host: `launch-nbd/docs/build-toolchain.md`; verifica
+  end-to-end sul target: `launch-nbd/docs/target-verification.md`
+  (`launch-nbd/tests/target-e2e.sh`).
 
 - `README.md` (root) = overview per umani; `TODO.md` (root) = stato del lavoro tra i
   due repo.

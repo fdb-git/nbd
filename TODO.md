@@ -147,7 +147,23 @@ Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del ma
       (tapctl/netsh/revert/errori). NOTA: runtime reale Windows del TAP non
       verificato (servono driver TAP-Windows6 + admin)
 
-## 3. Open / da decidere
+## 4. Verifica end-to-end sul target (pronta da eseguire)
+
+Artefatti preparati (nessuna modifica all'export dati; stato di test dedicato):
+
+- [x] `launch-nbd/tests/target-e2e.sh` — runner: prerequisiti, unit, e2e NBD
+      reale (`-tags e2e`), dry-run (fingerprint+overlay reali, `QEMU=/bin/echo`),
+      cleanup
+- [x] `internal/nbd/e2e_target_test.go` + `internal/qemu/e2e_target_test.go`
+      (build tag `e2e`, gate `LAUNCH_NBD_E2E=1`): round-trip stato reale,
+      fingerprint stabile del disco, lifecycle commit (ok/interrotto/ripresa)
+- [x] `launch-nbd/docs/target-verification.md` — checklist per il target
+      (`fdbhome` 10809 limit=1, state 10819, TLS off), troubleshooting
+- [ ] Esecuzione sul target (Odroid 192.168.1.112): `sudo ./tests/target-e2e.sh`
+- [ ] (opzionale) boot reale con overlay + controprove manuali (`state show`,
+      `nbdinfo`), mai su `direct`
+
+## 5. Open / da decidere
 
 - [ ] Sicurezza del marker lato server (es. `--filter=ip` sull'unit di stato) —
       fuori scope v1, da rivalutare
