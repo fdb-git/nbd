@@ -224,6 +224,41 @@ func TestCloseDoesNotWaitForDiscReply(t *testing.T) {
 	}
 }
 
+// TestDialRetriesOnEarlyClose: con --filter=limit limit=1 il server rifiuta le
+// connessioni ravvicinate chiudendole subito; Dial deve ritentare.
+func TestDialRetriesOnEarlyClose(t *testing.T) {
+	srv, err := nbdtest.New(map[string][]byte{"disk": make([]byte, 8192)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	srv.SetRejectFirst(2) // le prime 2 connessioni vengono chiuse subito
+	host, port := srv.Addr()
+	c, err := Dial(context.Background(), host, port, "disk")
+	if err != nil {
+		t.Fatalf("Dial con retry (limit): %v", err)
+	}
+	defer c.Close()
+	if c.Size() != 8192 {
+		t.Fatalf("size=%d", c.Size())
+	}
+}
+
+func TestDialFailsIfAlwaysRejected(t *testing.T) {
+	srv, err := nbdtest.New(map[string][]byte{"disk": make([]byte, 8192)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	srv.SetRejectFirst(100) // sempre rifiutato
+	host, port := srv.Addr()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if _, err := Dial(ctx, host, port, "disk"); err == nil {
+		t.Fatal("atteso errore dopo i tentativi")
+	}
+}
+
 func TestParseState(t *testing.T) {
 	for s, want := range map[string]State{
 		"clean": StateClean, "committing": StateCommitting, "committed": StateCommitted,

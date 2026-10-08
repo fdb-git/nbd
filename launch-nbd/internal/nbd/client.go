@@ -13,6 +13,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -54,8 +55,45 @@ type Conn struct {
 	handle uint64
 }
 
+// closedEarlyError: il server ha chiuso la connessione prima di inviare
+// l'handshake. Tipico con --filter=limit limit=1 quando uno slot è ancora
+// occupato (connessione rifiutata): è ritentabile.
+type closedEarlyError struct{ err error }
+
+func (e *closedEarlyError) Error() string {
+	return "nbd: connessione chiusa durante l'handshake (server con limit/export inesistente?): " + e.err.Error()
+}
+func (e *closedEarlyError) Unwrap() error { return e.err }
+
+// dialAttempts: tentativi per il rifiuto transitorio del filtro `limit`.
+const dialAttempts = 5
+
 // Dial: connessione a host:port per l'export indicato (plaintext).
+// Ritenta con backoff se il server chiude subito la connessione (limit=1).
 func Dial(ctx context.Context, host string, port int, export string) (*Conn, error) {
+	var lastErr error
+	for attempt := 0; attempt < dialAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * 200 * time.Millisecond):
+			}
+		}
+		c, err := dialOnce(ctx, host, port, export)
+		if err == nil {
+			return c, nil
+		}
+		lastErr = err
+		var ce *closedEarlyError
+		if !errors.As(err, &ce) {
+			return nil, err // errore non ritentabile (es. connection refused)
+		}
+	}
+	return nil, lastErr
+}
+
+func dialOnce(ctx context.Context, host string, port int, export string) (*Conn, error) {
 	d := net.Dialer{Timeout: 10 * time.Second}
 	nc, err := d.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 	if err != nil {
@@ -118,7 +156,7 @@ func (c *Conn) readFull(p []byte) error {
 func (c *Conn) handshake(export string) error {
 	var buf [8]byte
 	if err := c.readFull(buf[:]); err != nil {
-		return fmt.Errorf("nbd: lettura magic iniziale: %w", err)
+		return &closedEarlyError{err: fmt.Errorf("lettura magic iniziale: %w", err)}
 	}
 	if binary.BigEndian.Uint64(buf[:]) != magicNBDMAGIC {
 		return fmt.Errorf("nbd: magic iniziale errato (non è un server NBD?)")

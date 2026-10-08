@@ -34,6 +34,7 @@ type Server struct {
 	exports        map[string][]byte
 	flushes        map[string]int
 	ignoreDiscFlag bool
+	rejectFirst    int
 	wg             sync.WaitGroup
 }
 
@@ -90,6 +91,9 @@ func (s *Server) serve() {
 
 func (s *Server) handle(conn net.Conn) {
 	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
+	if s.rejectNext() {
+		return // chiude subito: emula il filtro limit che rifiuta la connessione
+	}
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], magicNBDMAGIC)
 	if _, err := conn.Write(buf[:]); err != nil {
@@ -220,4 +224,22 @@ func (s *Server) ignoreDisc() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.ignoreDiscFlag
+}
+
+// SetRejectFirst: rifiuta (chiude subito) le prime n connessioni accettate,
+// emulando --filter=limit limit=1 con uno slot occupato.
+func (s *Server) SetRejectFirst(n int) {
+	s.mu.Lock()
+	s.rejectFirst = n
+	s.mu.Unlock()
+}
+
+func (s *Server) rejectNext() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.rejectFirst > 0 {
+		s.rejectFirst--
+		return true
+	}
+	return false
 }
