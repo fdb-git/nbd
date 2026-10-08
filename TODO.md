@@ -147,21 +147,23 @@ Branch `feature/launch-nbd-go` (su `960470b`, base aggiornata). Contratto del ma
       (tapctl/netsh/revert/errori). NOTA: runtime reale Windows del TAP non
       verificato (servono driver TAP-Windows6 + admin)
 
-## 4. Verifica end-to-end sul target (pronta da eseguire)
+## 4. Verifica end-to-end sul target — **ESEGUITA (2026-10-08)**
 
-Artefatti preparati (nessuna modifica all'export dati; stato di test dedicato):
+Artefatti e risultati in `launch-nbd/docs/target-verification.md`:
 
-- [x] `launch-nbd/tests/target-e2e.sh` — runner: prerequisiti, unit, e2e NBD
-      reale (`-tags e2e`), dry-run (fingerprint+overlay reali, `QEMU=/bin/echo`),
-      cleanup
+- [x] `launch-nbd/tests/target-e2e.sh` — runner (prerequisiti, unit, e2e,
+      dry-run, cleanup)
 - [x] `internal/nbd/e2e_target_test.go` + `internal/qemu/e2e_target_test.go`
-      (build tag `e2e`, gate `LAUNCH_NBD_E2E=1`): round-trip stato reale,
-      fingerprint stabile del disco, lifecycle commit (ok/interrotto/ripresa)
-- [x] `launch-nbd/docs/target-verification.md` — checklist per il target
-      (`fdbhome` 10809 limit=1, state 10819, TLS off), troubleshooting
-- [ ] Esecuzione sul target (Odroid 192.168.1.112): `sudo ./tests/target-e2e.sh`
+      (tag `e2e`, gate `LAUNCH_NBD_E2E=1`)
+- [x] Esecuzione su Odroid 192.168.1.112 (`fdbhome` 10809 limit=1, state 10819):
+      **RISULTATO: TUTTO OK** — stato reale + FLUSH, fingerprint stabile,
+      lifecycle commit (ok/interrotto/ripresa)
+- [x] **Bug reali trovati e corretti**: `Close()` bloccato su `NBD_CMD_DISC`
+      (senza reply) [c6fd342]; `limit=1` → retry in `Dial` [feffd0d]
+- [ ] dry-run (overlay reale via `qemu-img`): **skip** sul target (qemu-utils non
+      installato) — da eseguire su un host client con QEMU
 - [ ] (opzionale) boot reale con overlay + controprove manuali (`state show`,
-      `nbdinfo`), mai su `direct`
+      `nbdinfo`) — mai su `direct`
 
 ## 5. Open / da decidere
 
