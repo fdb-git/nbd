@@ -169,3 +169,15 @@ func TestApplyEnvMapWarnsOnUnknown(t *testing.T) {
 		t.Errorf("atteso 1 warning, trovato %v", warned)
 	}
 }
+
+func TestLaunchEnvSkipsAssetsDir(t *testing.T) {
+	t.Setenv("LAUNCH_NBD_ASSETS_DIR", `/some/dir`)
+	t.Setenv("LAUNCH_NBD_NET_MODE", "nat")
+	m := launchEnv()
+	if _, ok := m["ASSETS_DIR"]; ok {
+		t.Error("ASSETS_DIR non deve diventare una chiave di config")
+	}
+	if m["NET_MODE"] != "nat" {
+		t.Errorf("NET_MODE=%q", m["NET_MODE"])
+	}
+}

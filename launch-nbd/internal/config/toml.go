@@ -12,6 +12,8 @@ import (
 const DefaultConfigName = "launch-nbd.toml"
 
 // launchEnv: variabili d'ambiente LAUNCH_NBD_* -> chiavi TOML (senza prefisso).
+// ASSETS_DIR è la variabile del dev-mode degli asset (vedi internal/assets),
+// non una chiave di configurazione: va esclusa.
 func launchEnv() map[string]string {
 	m := map[string]string{}
 	for _, kv := range os.Environ() {
@@ -19,7 +21,11 @@ func launchEnv() map[string]string {
 		if !ok || !strings.HasPrefix(k, "LAUNCH_NBD_") {
 			continue
 		}
-		m[strings.TrimPrefix(k, "LAUNCH_NBD_")] = v
+		key := strings.TrimPrefix(k, "LAUNCH_NBD_")
+		if strings.EqualFold(key, "ASSETS_DIR") {
+			continue
+		}
+		m[key] = v
 	}
 	return m
 }
