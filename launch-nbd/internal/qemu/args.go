@@ -383,7 +383,7 @@ func audioArgs(cfg config.Cfg, audioDrv string) ([]string, error) {
 	if cfg.AudioMode == "none" || audioDrv == "none" {
 		return nil, nil
 	}
-	if _, ok := map[string]bool{"pipewire": true, "pa": true, "sdl": true}[audioDrv]; !ok {
+	if _, ok := map[string]bool{"pipewire": true, "pa": true, "sdl": true, "wasapi": true, "dsound": true}[audioDrv]; !ok {
 		return nil, fmt.Errorf("audio_drv: '%s' non ammesso (auto|pipewire|pa|sdl|none)", audioDrv)
 	}
 	args := []string{"-audiodev", audioDrv + ",id=audio0"}

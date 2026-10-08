@@ -42,3 +42,27 @@ func TestSocketPath(t *testing.T) {
 		t.Errorf("SocketPath=%q", got)
 	}
 }
+
+func TestDetectWindowsAuto(t *testing.T) {
+	cases := []struct {
+		backends []string
+		want     string
+	}{
+		{[]string{"wasapi", "dsound", "sdl"}, "wasapi"},
+		{[]string{"dsound", "sdl"}, "dsound"},
+		{[]string{"sdl"}, "sdl"},
+		{nil, "none"},
+	}
+	for _, c := range cases {
+		got, err := Detect("auto", Env{GOOS: "windows", AudioBackends: c.backends})
+		if err != nil || got != c.want {
+			t.Errorf("Detect(auto, win, %v)=%q,%v atteso %q", c.backends, got, err, c.want)
+		}
+	}
+}
+
+func TestProbeBackendsEmptyBin(t *testing.T) {
+	if ProbeBackends("") != nil {
+		t.Error("ProbeBackends(\"\") deve dare nil")
+	}
+}

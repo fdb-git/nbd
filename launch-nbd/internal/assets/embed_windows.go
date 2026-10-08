@@ -21,7 +21,7 @@ func platformDir() string { return "windows" }
 var platformNames = map[string]string{
 	"qemu":      "qemu-system-x86_64.exe",
 	"qemu-img":  "qemu-img.exe",
-	"viewer":    "virt-viewer.exe",
+	"viewer":    "remote-viewer.exe",
 	"ovmf-code": "OVMF_CODE.fd",
 	"ovmf-vars": "OVMF_VARS.fd",
 	"tapctl":    "tapctl.exe",
@@ -30,5 +30,5 @@ var platformNames = map[string]string{
 func platformBinary(logical string) string { return platformNames[logical] }
 
 func platformExpected() []string {
-	return []string{"qemu-system-x86_64.exe", "qemu-img.exe", "virt-viewer.exe"}
+	return []string{"qemu-system-x86_64.exe", "qemu-img.exe", "remote-viewer.exe"}
 }

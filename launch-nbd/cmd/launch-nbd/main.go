@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	gonet "net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -201,6 +202,13 @@ func launchVM(ctx context.Context, mode qemu.Mode, isoPath string, args cli.Args
 
 	_, varsCopy := firmware(aset, sess, errw)
 
+	// binario QEMU risolto (assets → altrimenti PATH/config); serve anche per
+	// sondare i backend audio (-audiodev help).
+	qemuBin := aset.Resolve("qemu")
+	if qemuBin == "" {
+		qemuBin = cfg.QEMU
+	}
+
 	// display / GL / audio: risoluzione runtime (M6)
 	dEnv := display.Env{
 		Graphical:  graphicalSession(),
@@ -219,8 +227,10 @@ func launchVM(ctx context.Context, mode qemu.Mode, isoPath string, args cli.Args
 		return 1
 	}
 	aEnv := audio.Env{
-		UID:    audio.CurrentUID(),
-		Exists: func(p string) bool { _, err := os.Stat(p); return err == nil },
+		UID:           audio.CurrentUID(),
+		Exists:        func(p string) bool { _, err := os.Stat(p); return err == nil },
+		GOOS:          runtime.GOOS,
+		AudioBackends: audio.ProbeBackends(qemuBin),
 	}
 	adrv, err := audio.Detect(cfg.AudioDrv, aEnv)
 	if err != nil {
@@ -261,21 +271,23 @@ func launchVM(ctx context.Context, mode qemu.Mode, isoPath string, args cli.Args
 			fmt.Fprintln(out, n)
 		}
 	}
-	qemuBin := aset.Resolve("qemu")
-	if qemuBin == "" {
-		qemuBin = cfg.QEMU
-	}
 	if !args.Quiet {
 		fmt.Fprintf(out, "[run] %s (%s, %d MiB, %d cpu)\n", qemuBin, mode, cfg.MemMB, cfg.CPUs)
 	}
 
-	// client SPICE: lancio in background (come lo script: attesa 2s che il
-	// server ascolti), solo con display=spice
+	// client SPICE: viewer preferito dagli asset (es. <dir>/qemu/virt-viewer/bin),
+	// altrimenti PATH/flatpak; attende che la porta SPICE ascolti prima di avviarlo
 	if disp == "spice" {
-		if argv, ok := display.Viewer(dEnv, cfg.SpicePort); ok {
-			launchViewer(argv)
+		var viewer []string
+		if v := aset.Resolve("viewer"); v != "" {
+			viewer = []string{v, fmt.Sprintf("spice://127.0.0.1:%d", cfg.SpicePort)}
+		} else if argv, ok := display.Viewer(dEnv, cfg.SpicePort); ok {
+			viewer = argv
+		}
+		if len(viewer) > 0 {
+			launchViewer(viewer, cfg.SpicePort)
 			if !args.Quiet {
-				fmt.Fprintf(out, "[spice] client: %s\n", strings.Join(argv, " "))
+				fmt.Fprintf(out, "[spice] client: %s\n", strings.Join(viewer, " "))
 			}
 		} else {
 			fmt.Fprintln(errw, "warning:", display.ViewerHint())
@@ -409,16 +421,32 @@ func lookPath(name string) (string, bool) {
 	return p, err == nil
 }
 
-// launchViewer: avvia il client SPICE in background dopo 2s (il server deve
-// prima mettersi in ascolto). Fire-and-forget, come il subshell dello script.
-func launchViewer(argv []string) {
+// launchViewer: avvia il client SPICE in background, attendendo che la porta
+// SPICE sia in ascolto (evita il "Impossibile connettersi al server grafico"
+// di un viewer avviato troppo presto).
+func launchViewer(argv []string, port int) {
 	go func() {
-		time.Sleep(2 * time.Second)
+		waitPort(port, 10*time.Second)
 		cmd := exec.Command(argv[0], argv[1:]...)
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
 		_ = cmd.Start()
 	}()
+}
+
+// waitPort: attende che 127.0.0.1:port accetti connessioni (timeout).
+func waitPort(port int, timeout time.Duration) {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		c, err := gonet.DialTimeout("tcp", addr, 300*time.Millisecond)
+		if err == nil {
+			_ = c.Close()
+			time.Sleep(500 * time.Millisecond)
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // firmware: OVMF dagli asset; copia scrivibile della VARS nella workDir.

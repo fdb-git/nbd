@@ -29,12 +29,12 @@ func PlatformDefaults() Cfg {
 		DiskMode:   "direct",
 		OverlayDir: "overlay",
 
-		DisplayMode: "auto",
+		DisplayMode: "spice",
 		SpicePort:   5930,
 		VGAMode:     "virtio",
 		GL:          "auto",
 		AudioMode:   "hda",
-		AudioDrv:    "sdl",
+		AudioDrv:    "wasapi",
 
 		NetMode:   "hostonly",
 		TapDev:    "tap0",

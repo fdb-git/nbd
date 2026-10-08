@@ -32,7 +32,7 @@ func PlatformDefaults() Cfg {
 		OverlayDir: "overlay",
 
 		// display / vga / audio
-		DisplayMode: "auto",
+		DisplayMode: "spice",
 		SpicePort:   5930,
 		VGAMode:     "virtio",
 		GL:          "auto",

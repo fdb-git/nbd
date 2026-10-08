@@ -86,7 +86,7 @@ var enumSets = map[string][]string{
 	"cache_mode":   {"writeback", "none", "unsafe", "writethrough", "directsync"},
 	"aio":          {"io_uring", "native", "threads"},
 	"audio_mode":   {"hda", "virtio", "none"},
-	"audio_drv":    {"auto", "pipewire", "pa", "sdl", "none"},
+	"audio_drv":    {"auto", "pipewire", "pa", "sdl", "wasapi", "dsound", "none"},
 	"disk_mode":    {"direct", "overlay"},
 }
 

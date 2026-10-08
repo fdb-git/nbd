@@ -213,10 +213,16 @@ Note: gli asset (QEMU, OVMF, viewer, driver) sono embeddati dall'albero
 `internal/assets/<GOOS>/` (inventario in `docs/assets.md`); in sviluppo si può
 usare `LAUNCH_NBD_ASSETS_DIR=<dir>` per evitare l'embed. La rete TAP su Linux
 richiede root/sudo; su Windows usa TAP-Windows6 (tapctl) e non supporta bridged.
-Su Windows l'accelerazione WHPX usa `-cpu Haswell`: `-cpu max`/`host` fermano
-la vCPU (`WHPX: Unexpected VP exit code 4`); su Linux resta `-cpu max`.
-Verificato end-to-end da Windows 11 verso un nbdkit remoto (avvio VM con disco
-NBD + overlay locale, display SDL).
+Su Windows l'accelerazione WHPX usa `-cpu qemu64` (`-cpu max`/`host` fanno
+crashare OVMF sotto WHPX: "WHPX: Unexpected VP exit code 4"); su Linux resta
+`-cpu max`.
+
+Display: default **spice** (come il launcher di riferimento): QEMU è headless
+(`-display none -spice`) e il client viene avviato automaticamente — risolto
+dagli asset (`<dir>/qemu/virt-viewer/bin`) o dal PATH. Audio: su Windows `auto`
+sceglie `wasapi` → `dsound` → `sdl` sondando `qemu -audiodev help`; su Linux
+`pipewire`/`pa` dai socket. Verificato end-to-end da Windows 11 verso un nbdkit
+remoto (installer Pop!_OS a schermo via SPICE).
 
 ## Struttura del repository
 
