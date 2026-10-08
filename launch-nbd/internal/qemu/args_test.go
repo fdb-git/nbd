@@ -184,12 +184,33 @@ func TestBuildErrors(t *testing.T) {
 
 // TestAccelFallback: accel=kvm senza /dev/kvm -> -accel tcg (come lo script).
 func TestAccelFallback(t *testing.T) {
+	// kvm senza /dev/kvm -> accel=tcg (nessun fallback)
 	res, err := Build(baseCfg(), Facts{Mode: ModeRun, KVM: false})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasPair(res.Args, "-accel", "tcg") {
-		t.Errorf("atteso -accel tcg, args=%v", res.Args)
+	if !hasArgContaining(res.Args, "accel=tcg") {
+		t.Errorf("atteso -machine q35,accel=tcg, args=%v", res.Args)
+	}
+
+	// kvm disponibile -> kvm:tcg (fallback TCG)
+	res2, err := Build(baseCfg(), Facts{Mode: ModeRun, KVM: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasArgContaining(res2.Args, "accel=kvm:tcg") {
+		t.Errorf("atteso accel=kvm:tcg, args=%v", res2.Args)
+	}
+
+	// whpx -> whpx:tcg (fallback TCG, come il launcher di riferimento)
+	c := baseCfg()
+	c.Accel = "whpx"
+	res3, err := Build(c, Facts{Mode: ModeRun})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasArgContaining(res3.Args, "accel=whpx:tcg") {
+		t.Errorf("atteso accel=whpx:tcg, args=%v", res3.Args)
 	}
 }
 

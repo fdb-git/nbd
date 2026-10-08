@@ -200,7 +200,7 @@ func launchVM(ctx context.Context, mode qemu.Mode, isoPath string, args cli.Args
 		return code
 	}
 
-	_, varsCopy := firmware(aset, sess, errw)
+	_, varsCopy := firmware(aset, vmDirPath(cfg), errw)
 
 	// binario QEMU risolto (assets → altrimenti PATH/config); serve anche per
 	// sondare i backend audio (-audiodev help).
@@ -449,18 +449,34 @@ func waitPort(port int, timeout time.Duration) {
 	}
 }
 
-// firmware: OVMF dagli asset; copia scrivibile della VARS nella workDir.
-// Se manca, ritorna ("", "") → SeaBIOS.
-func firmware(aset *assets.Set, sess *session, errw io.Writer) (string, string) {
-	code := aset.Resolve("ovmf-code")
-	vars := aset.Resolve("ovmf-vars")
-	if code == "" || vars == "" {
+// vmDirPath: dir di lavoro persistente del VM (OVMF vars, overlay), assoluta.
+func vmDirPath(cfg config.Cfg) string {
+	if d, err := filepath.Abs(cfg.OverlayDir); err == nil {
+		return d
+	}
+	return cfg.OverlayDir
+}
+
+// firmware: OVMF dagli asset. La VARS scrivibile è PERSISTENTE in
+// <vmDir>/ovmf_vars.fd, creata dalla sorgente solo se mancante: così OVMF
+// conserva le boot entry (BootOrder/Boot####) tra i run, come il launcher di
+// riferimento (vm\ovmf_vars.fd). Se manca l'OVMF → SeaBIOS ("", "").
+func firmware(aset *assets.Set, dir string, errw io.Writer) (code, varsCopy string) {
+	code = aset.Resolve("ovmf-code")
+	srcVars := aset.Resolve("ovmf-vars")
+	if code == "" || srcVars == "" {
 		return "", ""
 	}
-	dst := filepath.Join(sess.workDir, "OVMF_VARS.fd")
-	if err := qemu.CopyFile(vars, dst); err != nil {
-		fmt.Fprintln(errw, "warning: copia OVMF_VARS fallita, uso SeaBIOS:", err)
-		return "", ""
+	dst := filepath.Join(dir, "ovmf_vars.fd")
+	if _, err := os.Stat(dst); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			fmt.Fprintln(errw, "warning: creazione dir per OVMF_VARS fallita, uso SeaBIOS:", err)
+			return "", ""
+		}
+		if err := qemu.CopyFile(srcVars, dst); err != nil {
+			fmt.Fprintln(errw, "warning: copia OVMF_VARS fallita, uso SeaBIOS:", err)
+			return "", ""
+		}
 	}
 	return code, dst
 }

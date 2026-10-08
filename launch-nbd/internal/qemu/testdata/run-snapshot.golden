@@ -1,7 +1,5 @@
--accel
-kvm
 -machine
-q35
+q35,accel=kvm:tcg
 -cpu
 max
 -smp

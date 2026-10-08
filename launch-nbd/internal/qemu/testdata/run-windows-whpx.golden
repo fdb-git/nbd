@@ -1,7 +1,5 @@
--accel
-whpx
 -machine
-q35
+q35,accel=whpx:tcg
 -cpu
 qemu64
 -smp

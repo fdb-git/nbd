@@ -80,7 +80,7 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 	}
 	display, gl, audioDrv := resolveRuntime(cfg, f)
 
-	// --- accelerazione -------------------------------------------------------
+	// --- accelerazione (con fallback TCG: "whpx:tcg" / "kvm:tcg") -------------
 	accel := cfg.Accel
 	switch accel {
 	case "auto":
@@ -97,7 +97,11 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 			note("[ok] KVM disponibile")
 		}
 	}
-	add("-accel", accel) // due token: qemu rifiuta -accel=kvm
+	// fallback a TCG se l'acceleratore primario non è disponibile (come il
+	// launcher di riferimento: -machine q35,accel=whpx:tcg)
+	if accel != "tcg" {
+		accel += ":tcg"
+	}
 
 	// --- cache mode -> write-cache / cache.direct / cache.no-flush ------------
 	wc, cd, cnf, err := cacheFlags(cfg.CacheMode)
@@ -146,7 +150,7 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 	if cpu == "" {
 		cpu = "max"
 	}
-	add("-machine", "q35")
+	add("-machine", "q35,accel="+accel)
 	add("-cpu", cpu)
 	add("-smp", strconv.Itoa(cfg.CPUs))
 	add("-m", fmt.Sprintf("%dM", cfg.MemMB))
@@ -206,15 +210,18 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 
 	// --- VGA + GL -------------------------------------------------------------
 	add("-vga", cfg.VGAMode)
-	if cfg.VGAMode == "virtio" {
-		switch gl {
-		case "on":
+	switch {
+	case cfg.VGAMode != "virtio":
+		note("[gl] saltato (solo vga virtio supporta virgl)")
+	case display == "gtk" || display == "sdl":
+		if gl == "on" {
 			note("[gl] virgl 3D attivo (serve driver virtio-gpu nel guest)")
-		case "off":
+		} else {
 			note("[gl] 3D disattivato (virtio-gpu 2D)")
 		}
-	} else {
-		note("[gl] saltato (solo vga virtio supporta virgl)")
+	default:
+		// spice/vnc/none: gl non si applica (nessuna superficie GL)
+		note("[gl] non applicato (display " + display + ": 2D virtio-gpu)")
 	}
 
 	// --- display + spice ------------------------------------------------------

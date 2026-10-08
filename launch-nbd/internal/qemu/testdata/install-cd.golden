@@ -1,7 +1,5 @@
--accel
-tcg
 -machine
-q35
+q35,accel=tcg
 -cpu
 max
 -smp

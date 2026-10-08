@@ -219,10 +219,13 @@ crashare OVMF sotto WHPX: "WHPX: Unexpected VP exit code 4"); su Linux resta
 
 Display: default **spice** (come il launcher di riferimento): QEMU è headless
 (`-display none -spice`) e il client viene avviato automaticamente — risolto
-dagli asset (`<dir>/qemu/virt-viewer/bin`) o dal PATH. Audio: su Windows `auto`
-sceglie `wasapi` → `dsound` → `sdl` sondando `qemu -audiodev help`; su Linux
-`pipewire`/`pa` dai socket. Verificato end-to-end da Windows 11 verso un nbdkit
-remoto (installer Pop!_OS a schermo via SPICE).
+dagli asset (`<dir>/qemu/virt-viewer/bin`) o dal PATH. Audio: default `auto`; su
+Windows sceglie `wasapi` → `dsound` → `sdl` sondando `qemu -audiodev help`; su
+Linux `pipewire`/`pa` dai socket. Accelerazione: `-machine q35,accel=<primario>:tcg`
+(fallback TCG). Firmware UEFI: la copia scrivibile delle OVMF **VARS è
+persistente** in `<overlay_dir>/ovmf_vars.fd` (creata la prima volta, poi riusata:
+conserva le boot entry `BootOrder`/`Boot####` tra i run). Verificato end-to-end da
+Windows 11 verso un nbdkit remoto (installer Pop!_OS a schermo via SPICE).
 
 ## Struttura del repository
 
