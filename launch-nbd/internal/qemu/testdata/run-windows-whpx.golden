@@ -3,7 +3,7 @@ whpx
 -machine
 q35
 -cpu
-Haswell
+qemu64
 -smp
 4
 -m

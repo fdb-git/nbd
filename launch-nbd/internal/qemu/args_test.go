@@ -75,7 +75,7 @@ func TestGoldenArgs(t *testing.T) {
 			c.AudioMode = "hda"
 			c.AudioDrv = "sdl"
 			return c
-		}, Facts{Mode: ModeRun, CPU: "Haswell"}},
+		}, Facts{Mode: ModeRun, CPU: "qemu64"}},
 		{"run-tap", func() config.Cfg {
 			c := baseCfg()
 			c.NetMode = "tap"

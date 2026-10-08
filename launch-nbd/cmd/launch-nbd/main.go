@@ -385,11 +385,11 @@ func setupNet(ctx context.Context, cfg config.Cfg, aset *assets.Set, sess *sessi
 }
 
 // cpuModel: modello -cpu per la piattaforma. Su Windows/WHPX "max" e "host"
-// fermano la vCPU ("WHPX: Unexpected VP exit code 4"): si usa un modello
-// compatibile (Haswell). Su Linux "max" (KVM/TCG lo supportano).
+// fanno crashare OVMF (WHPX: Unexpected VP exit code 4): si usa "qemu64"
+// (default del launcher di riferimento). Su Linux "max" (KVM/TCG).
 func cpuModel() string {
 	if runtime.GOOS == "windows" {
-		return "Haswell"
+		return "qemu64"
 	}
 	return "max"
 }
