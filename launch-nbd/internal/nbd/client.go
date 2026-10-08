@@ -36,6 +36,9 @@ const (
 	cmdWrite = 1
 	cmdDisc  = 2
 	cmdFlush = 3
+
+	// opTimeout: deadline per singola operazione (evita hang infiniti).
+	opTimeout = 30 * time.Second
 )
 
 // Error: errore riportato dal server NBD (campo error della reply).
@@ -75,10 +78,24 @@ func Dial(ctx context.Context, host string, port int, export string) (*Conn, err
 // Size: dimensione dell'export in byte.
 func (c *Conn) Size() uint64 { return c.size }
 
-// Close: chiude la connessione (best-effort NBD_CMD_DISC).
+// Close: invia NBD_CMD_DISC (che NON ha reply: il server chiude e basta) e
+// chiude la socket, senza attendere alcuna risposta.
 func (c *Conn) Close() error {
-	_ = c.request(cmdDisc, 0, 0, nil)
+	_ = c.sendDisc()
 	return c.conn.Close()
+}
+
+// sendDisc: scrive la richiesta di disconnessione senza attendere una reply.
+func (c *Conn) sendDisc() error {
+	_ = c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	defer c.conn.SetWriteDeadline(time.Time{})
+	c.handle++
+	var req [28]byte
+	binary.BigEndian.PutUint32(req[0:4], reqMagic)
+	binary.BigEndian.PutUint16(req[6:8], cmdDisc)
+	binary.BigEndian.PutUint64(req[8:16], c.handle)
+	_, err := c.conn.Write(req[:])
+	return err
 }
 
 // ReadAt: legge len(p) byte da off.
@@ -162,7 +179,10 @@ func (c *Conn) handshake(export string) error {
 }
 
 // request: invia una richiesta e attende la simple reply (con dati per READ).
+// Applica un deadline per operazione: nessuna richiesta può bloccarsi per sempre.
 func (c *Conn) request(cmd uint16, off uint64, length uint32, data []byte) error {
+	_ = c.conn.SetDeadline(time.Now().Add(opTimeout))
+	defer c.conn.SetDeadline(time.Time{})
 	c.handle++
 	h := c.handle
 

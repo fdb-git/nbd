@@ -3,6 +3,7 @@ package nbd
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/fdb-git/nbd/launch-nbd/internal/nbd/nbdtest"
 )
@@ -196,6 +197,30 @@ func TestStateOverWire(t *testing.T) {
 	}
 	if StatusExportName("demo") != "demo.status" {
 		t.Errorf("StatusExportName=%q", StatusExportName("demo"))
+	}
+}
+
+// TestCloseDoesNotWaitForDiscReply: NBD_CMD_DISC non ha reply: Close non deve
+// bloccarsi se il server non risponde (regressione trovata contro nbdkit reale).
+func TestCloseDoesNotWaitForDiscReply(t *testing.T) {
+	srv, err := nbdtest.New(map[string][]byte{"disk": make([]byte, 8192)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	srv.SetIgnoreDisc(true) // il server ignora DISC e non chiude
+	host, port := srv.Addr()
+	c, err := Dial(context.Background(), host, port, "disk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- c.Close() }()
+	select {
+	case <-done:
+		// ok: non ha atteso una reply inesistente
+	case <-time.After(3 * time.Second):
+		t.Fatal("Close si è bloccato in attesa di una reply a NBD_CMD_DISC (il server non la invia)")
 	}
 }
 

@@ -29,11 +29,12 @@ const (
 
 // Server: server NBD mock in ascolto su 127.0.0.1.
 type Server struct {
-	ln      net.Listener
-	mu      sync.Mutex
-	exports map[string][]byte
-	flushes map[string]int
-	wg      sync.WaitGroup
+	ln             net.Listener
+	mu             sync.Mutex
+	exports        map[string][]byte
+	flushes        map[string]int
+	ignoreDiscFlag bool
+	wg             sync.WaitGroup
 }
 
 // New: avvia il server con gli export indicati (nome -> contenuto).
@@ -205,4 +206,18 @@ func (s *Server) handle(conn net.Conn) {
 			}
 		}
 	}
+}
+
+// SetIgnoreDisc: se true il server NON risponde e NON chiude su NBD_CMD_DISC
+// (emula i server reali che non inviano reply; usato per i test di regressione).
+func (s *Server) SetIgnoreDisc(v bool) {
+	s.mu.Lock()
+	s.ignoreDiscFlag = v
+	s.mu.Unlock()
+}
+
+func (s *Server) ignoreDisc() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ignoreDiscFlag
 }
