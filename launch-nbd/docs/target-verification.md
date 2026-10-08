@@ -16,13 +16,14 @@ Eseguito `bash ./tests/target-e2e.sh` (root, Go 1.26.8 linux/arm64) su
 | `TestE2EStateRoundTrip` (stato reale + FLUSH) | **PASS** |
 | `TestE2EFingerprint` (fingerprint stabile del disco) | **PASS** |
 | `TestE2ECommitLifecycle` (commit / interruzione / ripresa) | **PASS** |
-| dry-run (fingerprint + overlay reale + args) | **skip** (niente `qemu-img` sul target) |
+| dry-run (fingerprint + overlay reale via `qemu-img` + args) | **OK** (dopo `apt-get install qemu-utils`) |
 | cleanup (`e2e-state` rimosso, `fdbhome` clean) | OK |
 
-Esito complessivo: **RISULTATO: TUTTO OK** (ll fingerprint del disco reale è
-`XgOA5AXVmbegAqWIsq5Z8Hm30xj7PupJLKURRULQeVA`).
+Esito complessivo: **RISULTATO: TUTTO OK**. Il fingerprint del disco reale è
+`XgOA5AXVmbegAqWIsq5Z8Hm30xj7PupJLKURRULQeVA`; l'overlay creato è
+`<overlay_dir>/<hash>.qcow2` con backing `nbd://127.0.0.1:10809/fdbhome`.
 
-**Due bug reali trovati e corretti** in questa sessione (non visibili col mock):
+**Tre bug reali trovati e corretti** in questa sessione (non visibili col mock):
 
 1. **`Close()` si bloccava**: inviava `NBD_CMD_DISC` attendendo una reply che il
    protocollo non prevede → hang. Fix: invio senza attesa + deadline per
@@ -30,16 +31,20 @@ Esito complessivo: **RISULTATO: TUTTO OK** (ll fingerprint del disco reale è
 2. **`limit=1` rifiuta le connessioni ravvicinate** (`nbdkit: limit: too many
    clients connected, connection rejected`): il secondo `Fingerprint` immediato
    riceveva EOF. Fix: retry con backoff in `Dial`. Commit `feffd0d`.
+3. **overlay mai creato se assente**: `GuardRun` ritorna `found=false` con
+   stato zero (`OverlayLive`); lo `switch` cadeva nel ramo "riusa" → path vuoto.
+   Fix: `qemu.EnsureOverlay` (crea/riusa/rinomina/blocca) + 5 test. Commit
+   `0ddd136`.
 
-**Note operative del target** (non del codice):
+**Note operative del target** (non del codice), risolte durante la sessione:
 
-- `nbd-export-fdbhome.service` era **`disabled`** (non riparte al boot):
-  `./nbd-export.sh enable fdbhome --now` per renderlo persistente.
-- Nessun `qemu-img`/QEMU installato → il dry-run (§2 passo 5) si salta; per
-  eseguirlo serve `qemu-utils`.
-- `nbdinfo` in `~/opt/libnbd-tools` non parte (`libnbd.so.0` assente): non è
-  necessario (l'e2e usa il client Go), ma va risolto se si vuole la controprova
-  manuale §4.
+- `nbd-export-fdbhome.service` era **`disabled`**: ora `enable fdbhome --now`
+  (riparte al boot).
+- `qemu-img` assente: installato `qemu-utils` (6.2.0) per il dry-run.
+- `nbdinfo` in `~/opt/libnbd-tools` non parte (`libnbd.so.0` assente, pacchetto
+  `libnbd0` non estratto; nessun `nbdinfo` di sistema). Non serve ai test
+  (l'e2e usa il nostro client), ma la controprova manuale §4 richiede
+  `apt-get install -y libnbd-bin` (porta `libnbd0`).
 
 ---
 

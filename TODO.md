@@ -157,13 +157,13 @@ Artefatti e risultati in `launch-nbd/docs/target-verification.md`:
       (tag `e2e`, gate `LAUNCH_NBD_E2E=1`)
 - [x] Esecuzione su Odroid 192.168.1.112 (`fdbhome` 10809 limit=1, state 10819):
       **RISULTATO: TUTTO OK** — stato reale + FLUSH, fingerprint stabile,
-      lifecycle commit (ok/interrotto/ripresa)
-- [x] **Bug reali trovati e corretti**: `Close()` bloccato su `NBD_CMD_DISC`
-      (senza reply) [c6fd342]; `limit=1` → retry in `Dial` [feffd0d]
-- [ ] dry-run (overlay reale via `qemu-img`): **skip** sul target (qemu-utils non
-      installato) — da eseguire su un host client con QEMU
+      lifecycle commit (ok/interrotto/ripresa), **dry-run** (overlay reale via
+      qemu-img)
+- [x] **3 bug reali trovati e corretti**: `Close()` bloccato su `NBD_CMD_DISC`
+      [c6fd342]; `limit=1` → retry in `Dial` [feffd0d]; overlay mai creato se
+      assente → `qemu.EnsureOverlay` [0ddd136]
 - [ ] (opzionale) boot reale con overlay + controprove manuali (`state show`,
-      `nbdinfo`) — mai su `direct`
+      `nbdinfo`) — mai su `direct`. Per `nbdinfo` serve `apt-get install libnbd-bin`
 
 ## 5. Open / da decidere
 
