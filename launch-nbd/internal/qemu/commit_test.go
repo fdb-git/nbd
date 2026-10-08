@@ -237,3 +237,79 @@ func TestSessionUUIDShape(t *testing.T) {
 		t.Error("UUID non casuale")
 	}
 }
+
+// --- EnsureOverlay (bug del dry-run: nessun overlay -> path vuoto) -----------
+
+func TestEnsureOverlayCreatesWhenAbsent(t *testing.T) {
+	dir := t.TempDir()
+	var gotArgs []string
+	runImg := func(_ context.Context, args ...string) error { gotArgs = args; return nil }
+	path, err := EnsureOverlay(context.Background(), dir, "H", "nbd://s:1/e", "qemu-img", runImg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != OverlayPath(dir, "H", OverlayLive) {
+		t.Fatalf("path=%q, atteso %q", path, OverlayPath(dir, "H", OverlayLive))
+	}
+	if len(gotArgs) == 0 || gotArgs[0] != "create" {
+		t.Fatalf("qemu-img create non invocato: %v", gotArgs)
+	}
+}
+
+func TestEnsureOverlayReusesLive(t *testing.T) {
+	dir := t.TempDir()
+	live := OverlayPath(dir, "H", OverlayLive)
+	if err := os.WriteFile(live, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	runImg := func(context.Context, ...string) error { called = true; return nil }
+	path, err := EnsureOverlay(context.Background(), dir, "H", "u", "qemu-img", runImg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != live {
+		t.Errorf("path=%q", path)
+	}
+	if called {
+		t.Error("non deve ricreare un overlay live esistente")
+	}
+}
+
+func TestEnsureOverlayRevivesCommitted(t *testing.T) {
+	dir := t.TempDir()
+	committed := OverlayPath(dir, "H", OverlayCommitted)
+	if err := os.WriteFile(committed, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path, err := EnsureOverlay(context.Background(), dir, "H", "u", "qemu-img",
+		func(context.Context, ...string) error { return nil }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != OverlayPath(dir, "H", OverlayLive) {
+		t.Errorf("path=%q (atteso live)", path)
+	}
+	if _, err := os.Stat(committed); !os.IsNotExist(err) {
+		t.Error("il file -committed deve essere stato rinominato")
+	}
+}
+
+func TestEnsureOverlayBlockedByCommitting(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(OverlayPath(dir, "H", OverlayCommitting), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureOverlay(context.Background(), dir, "H", "u", "qemu-img",
+		func(context.Context, ...string) error { return nil }, nil); err == nil {
+		t.Fatal("atteso BlockedError")
+	}
+}
+
+func TestEnsureOverlayCreateFails(t *testing.T) {
+	dir := t.TempDir()
+	runImg := func(context.Context, ...string) error { return errors.New("qemu-img ko") }
+	if _, err := EnsureOverlay(context.Background(), dir, "H", "u", "qemu-img", runImg, nil); err == nil {
+		t.Fatal("atteso errore")
+	}
+}

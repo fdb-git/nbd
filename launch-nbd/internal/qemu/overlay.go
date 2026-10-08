@@ -1,6 +1,7 @@
 package qemu
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -107,4 +108,44 @@ func CopyFile(src, dst string) error {
 		return err
 	}
 	return os.WriteFile(dst, b, 0o644)
+}
+
+// EnsureOverlay: prepara l'overlay del disco <hash> per un avvio in modalità
+// overlay. Gestisce i marker (§5.8):
+//   - <hash>-committing presente  → BlockedError (fail-stop: commit interrotto)
+//   - <hash>-committed presente   → torna "live" (nuovi delta sopra l'overlay vuoto)
+//   - <hash>.qcow2 (live)         → riuso
+//   - nessuno                     → crea con qemu-img (backing = backingURI)
+//
+// Ritorna il percorso dell'overlay live; errore se la creazione fallisce.
+func EnsureOverlay(ctx context.Context, dir, hash, backingURI, qemuImg string, runImg ImgRunner, log func(string)) (string, error) {
+	if log == nil {
+		log = func(string) {}
+	}
+	if runImg == nil {
+		runImg = RunImg(qemuImg)
+	}
+	path, st, found, err := GuardRun(dir, hash)
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case found && st == OverlayCommitted:
+		live := OverlayPath(dir, hash, OverlayLive)
+		if err := os.Rename(path, live); err != nil {
+			return "", fmt.Errorf("overlay: rename %s -> %s: %w", path, live, err)
+		}
+		log("[cache] overlay committato riportato a live: " + live)
+		return live, nil
+	case found && st == OverlayLive:
+		log("[cache] riuso overlay: " + path)
+		return path, nil
+	default:
+		live := OverlayPath(dir, hash, OverlayLive)
+		if err := runImg(ctx, ImgCreateArgs(backingURI, live)...); err != nil {
+			return "", err
+		}
+		log("[cache] creato overlay: " + live)
+		return live, nil
+	}
 }

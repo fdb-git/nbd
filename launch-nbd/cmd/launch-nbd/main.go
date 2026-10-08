@@ -336,30 +336,12 @@ func prepareOverlay(ctx context.Context, cfg config.Cfg, args cli.Args, aset *as
 		fmt.Fprintln(errw, "error:", err)
 		return "", 1
 	}
-	path, st, _, gerr := qemu.GuardRun(dir, hash)
-	if gerr != nil {
-		fmt.Fprintln(errw, "error:", gerr)
+	path, err := qemu.EnsureOverlay(ctx, dir, hash, uri, img, nil, func(m string) {
+		fmt.Fprintln(errw, m)
+	})
+	if err != nil {
+		fmt.Fprintln(errw, "error:", err)
 		return "", 1
-	}
-	switch st {
-	case qemu.OverlayCommitted:
-		// overlay vuoto già committato: torna "live" per nuovi delta
-		live := qemu.OverlayPath(dir, hash, qemu.OverlayLive)
-		if err := os.Rename(path, live); err != nil {
-			fmt.Fprintln(errw, "error:", err)
-			return "", 1
-		}
-		path = live
-	case qemu.OverlayLive:
-		// riusa
-	default:
-		// crea
-		live := qemu.OverlayPath(dir, hash, qemu.OverlayLive)
-		if err := qemu.RunImg(img)(ctx, qemu.ImgCreateArgs(uri, live)...); err != nil {
-			fmt.Fprintln(errw, "error:", err)
-			return "", 1
-		}
-		path = live
 	}
 	fmt.Fprintf(errw, "warning: overlay locale %s (le scritture restano locali fino a 'launch-nbd commit')\n", path)
 	return path, 0
