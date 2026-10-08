@@ -241,3 +241,16 @@ func hasPair(args []string, k, v string) bool {
 	}
 	return false
 }
+
+func TestMonitorSpec(t *testing.T) {
+	cases := map[string]string{
+		"/tmp/mon.sock":      "unix:/tmp/mon.sock,server=on,wait=off",
+		"unix:/tmp/m.sock":   "unix:/tmp/m.sock,server=on,wait=off",
+		"tcp:127.0.0.1:4444": "tcp:127.0.0.1:4444,server=on,wait=off",
+	}
+	for in, want := range cases {
+		if got := monitorSpec(in); got != want {
+			t.Errorf("monitorSpec(%q)=%q, atteso %q", in, got, want)
+		}
+	}
+}

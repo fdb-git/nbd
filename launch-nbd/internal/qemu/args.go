@@ -256,9 +256,19 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 		add("-monitor", "stdio")
 	}
 	if cfg.MonSock != "" {
-		add("-monitor", "unix:"+cfg.MonSock+",server=on,wait=off")
+		add("-monitor", monitorSpec(cfg.MonSock))
 	}
 	return r, nil
+}
+
+// monitorSpec: MON_SOCK è un path (→ socket unix) oppure una spec chardev
+// completa (es. "tcp:127.0.0.1:4444"). In entrambi i casi il server è già in
+// ascolto (server=on) e non blocca l'avvio (wait=off).
+func monitorSpec(s string) string {
+	if strings.HasPrefix(s, "unix:") || strings.HasPrefix(s, "tcp:") || strings.HasPrefix(s, "socket,") {
+		return s + ",server=on,wait=off"
+	}
+	return "unix:" + s + ",server=on,wait=off"
 }
 
 // resolveRuntime: applica i valori risolti runtime o i default headless.
