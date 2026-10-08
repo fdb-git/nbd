@@ -66,6 +66,16 @@ func TestGoldenArgs(t *testing.T) {
 			c.MonSock = "/tmp/mon.sock"
 			return c
 		}, Facts{Mode: ModeRun, KVM: true}},
+		{"run-windows-whpx", func() config.Cfg {
+			c := baseCfg()
+			c.Accel = "whpx"
+			c.NetMode = "hostonly"
+			c.DisplayMode = "sdl"
+			c.GL = "off"
+			c.AudioMode = "hda"
+			c.AudioDrv = "sdl"
+			return c
+		}, Facts{Mode: ModeRun, CPU: "Haswell"}},
 		{"run-tap", func() config.Cfg {
 			c := baseCfg()
 			c.NetMode = "tap"

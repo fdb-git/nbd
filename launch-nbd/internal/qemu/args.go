@@ -53,6 +53,11 @@ type Facts struct {
 	// KVM: /dev/kvm disponibile (per accel=auto|kvm).
 	KVM bool
 
+	// CPU: modello -cpu. Vuoto → "max". Su Windows/WHPX "max"/"host"
+	// fermano la vCPU ("WHPX: Unexpected VP exit code 4"): il chiamante usa
+	// un modello compatibile (es. Haswell).
+	CPU string
+
 	// BridgedTap: tap concreto creato dal layer net per net_mode=bridged (root);
 	// se vuoto si usa la forma con qemu-bridge-helper (br=).
 	BridgedTap string
@@ -137,8 +142,12 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 	}
 
 	// --- macchina / cpu / memoria --------------------------------------------
+	cpu := f.CPU
+	if cpu == "" {
+		cpu = "max"
+	}
 	add("-machine", "q35")
-	add("-cpu", "max")
+	add("-cpu", cpu)
 	add("-smp", strconv.Itoa(cfg.CPUs))
 	add("-m", fmt.Sprintf("%dM", cfg.MemMB))
 

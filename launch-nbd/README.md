@@ -213,6 +213,10 @@ Note: gli asset (QEMU, OVMF, viewer, driver) sono embeddati dall'albero
 `internal/assets/<GOOS>/` (inventario in `docs/assets.md`); in sviluppo si può
 usare `LAUNCH_NBD_ASSETS_DIR=<dir>` per evitare l'embed. La rete TAP su Linux
 richiede root/sudo; su Windows usa TAP-Windows6 (tapctl) e non supporta bridged.
+Su Windows l'accelerazione WHPX usa `-cpu Haswell`: `-cpu max`/`host` fermano
+la vCPU (`WHPX: Unexpected VP exit code 4`); su Linux resta `-cpu max`.
+Verificato end-to-end da Windows 11 verso un nbdkit remoto (avvio VM con disco
+NBD + overlay locale, display SDL).
 
 ## Struttura del repository
 

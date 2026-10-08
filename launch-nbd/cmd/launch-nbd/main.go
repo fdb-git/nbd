@@ -240,6 +240,7 @@ func launchVM(ctx context.Context, mode qemu.Mode, isoPath string, args cli.Args
 		OverlayFile: overlayFile,
 		ISOFile:     isoPath,
 		KVM:         kvmAvailable(),
+		CPU:         cpuModel(),
 		VarsCopy:    varsCopy,
 		BridgedTap:  bridgedTap,
 		DisplayMode: disp,
@@ -381,6 +382,16 @@ func setupNet(ctx context.Context, cfg config.Cfg, aset *assets.Set, sess *sessi
 		}
 	}
 	return 0
+}
+
+// cpuModel: modello -cpu per la piattaforma. Su Windows/WHPX "max" e "host"
+// fermano la vCPU ("WHPX: Unexpected VP exit code 4"): si usa un modello
+// compatibile (Haswell). Su Linux "max" (KVM/TCG lo supportano).
+func cpuModel() string {
+	if runtime.GOOS == "windows" {
+		return "Haswell"
+	}
+	return "max"
 }
 
 // graphicalSession: c'è una sessione grafica? (DISPLAY/WAYLAND su Unix; sempre
