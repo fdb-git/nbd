@@ -34,7 +34,7 @@ func PlatformDefaults() Cfg {
 		VGAMode:     "virtio",
 		GL:          "auto",
 		AudioMode:   "hda",
-		AudioDrv:    "wasapi",
+		AudioDrv:    "auto",
 
 		NetMode:   "hostonly",
 		TapDev:    "tap0",

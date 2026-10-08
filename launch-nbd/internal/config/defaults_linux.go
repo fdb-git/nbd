@@ -37,7 +37,7 @@ func PlatformDefaults() Cfg {
 		VGAMode:     "virtio",
 		GL:          "auto",
 		AudioMode:   "hda",
-		AudioDrv:    "pipewire",
+		AudioDrv:    "auto",
 
 		// rete
 		NetMode:   "dual",
