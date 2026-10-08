@@ -17,13 +17,17 @@ Eseguito `bash ./tests/target-e2e.sh` (root, Go 1.26.8 linux/arm64) su
 | `TestE2EFingerprint` (fingerprint stabile del disco) | **PASS** |
 | `TestE2ECommitLifecycle` (commit / interruzione / ripresa) | **PASS** |
 | dry-run (fingerprint + overlay reale via `qemu-img` + args) | **OK** (dopo `apt-get install qemu-utils`) |
-| cleanup (`e2e-state` rimosso, `fdbhome` clean) | OK |
+| probe `nbdinfo` sull'export dati | **OK** (dopo `apt-get install libnbd-bin`) |
+| cleanup (`e2e-state-*` rimossi, `fdbhome` clean) | OK |
 
-Esito complessivo: **RISULTATO: TUTTO OK**. Il fingerprint del disco reale è
-`XgOA5AXVmbegAqWIsq5Z8Hm30xj7PupJLKURRULQeVA`; l'overlay creato è
-`<overlay_dir>/<hash>.qcow2` con backing `nbd://127.0.0.1:10809/fdbhome`.
+Esito complessivo: **RISULTATO: TUTTO OK** (deterministico, più corse). Il
+fingerprint del disco reale è `XgOA5AXVmbegAqWIsq5Z8Hm30xj7PupJLKURRULQeVA`;
+l'overlay creato è `<overlay_dir>/<hash>.qcow2` con backing
+`nbd://127.0.0.1:10809/fdbhome`; `nbdinfo --size` conferma disco ~484 GiB e
+state export a 4096 byte.
 
-**Tre bug reali trovati e corretti** in questa sessione (non visibili col mock):
+**Tre bug reali di prodotto trovati e corretti** in questa sessione (invisibili
+col mock):
 
 1. **`Close()` si bloccava**: inviava `NBD_CMD_DISC` attendendo una reply che il
    protocollo non prevede → hang. Fix: invio senza attesa + deadline per
@@ -36,15 +40,22 @@ Esito complessivo: **RISULTATO: TUTTO OK**. Il fingerprint del disco reale è
    Fix: `qemu.EnsureOverlay` (crea/riusa/rinomina/blocca) + 5 test. Commit
    `0ddd136`.
 
-**Note operative del target** (non del codice), risolte durante la sessione:
+E una **race del solo harness di test** (non del prodotto): i due package `e2e`
+giravano in parallelo condividendo lo stesso file di stato di test → fixture
+isolati per package e `-p 1` (commit `66e9b4e`).
 
-- `nbd-export-fdbhome.service` era **`disabled`**: ora `enable fdbhome --now`
+**Note operative del target** (risolte):
+
+- `nbd-export-fdbhome.service` era `disabled` → ora `enable fdbhome --now`
   (riparte al boot).
-- `qemu-img` assente: installato `qemu-utils` (6.2.0) per il dry-run.
-- `nbdinfo` in `~/opt/libnbd-tools` non parte (`libnbd.so.0` assente, pacchetto
-  `libnbd0` non estratto; nessun `nbdinfo` di sistema). Non serve ai test
-  (l'e2e usa il nostro client), ma la controprova manuale §4 richiede
-  `apt-get install -y libnbd-bin` (porta `libnbd0`).
+- `qemu-img` assente → `apt-get install qemu-utils` (6.2.0).
+- `nbdinfo` non funzionante (l'estrazione in `~/opt` non includeva `libnbd0`) →
+  `apt-get install libnbd-bin` (1.10.5-1, **stessa versione**, porta `libnbd0`).
+  Ora `/usr/bin/nbdinfo` è di sistema; l'estrazione in `~/opt/libnbd-tools` è
+  ridondante.
+
+> `AGENTS.md` diceva «la produzione ha i tool di sistema» per `nbdinfo`: su
+> questo target non era vero (nessun pacchetto libnbd installato). Ora lo è.
 
 ---
 

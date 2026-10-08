@@ -163,7 +163,8 @@ Artefatti e risultati in `launch-nbd/docs/target-verification.md`:
       [c6fd342]; `limit=1` → retry in `Dial` [feffd0d]; overlay mai creato se
       assente → `qemu.EnsureOverlay` [0ddd136]
 - [ ] (opzionale) boot reale con overlay + controprove manuali (`state show`,
-      `nbdinfo`) — mai su `direct`. Per `nbdinfo` serve `apt-get install libnbd-bin`
+      `nbdinfo`). Ora disponibili: `nbdinfo` di sistema (libnbd-bin 1.10.5-1),
+      `qemu-img` (qemu-utils 6.2.0), `fdbhome` enabled al boot
 
 ## 5. Open / da decidere
 
