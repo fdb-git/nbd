@@ -275,3 +275,28 @@ func TestMonitorSpec(t *testing.T) {
 		}
 	}
 }
+
+func TestAccelProps(t *testing.T) {
+	c := baseCfg()
+	c.Accel = "tcg,thread=multi,tb-size=512"
+	res, err := Build(c, Facts{Mode: ModeRun})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasPair(res.Args, "-accel", "tcg,thread=multi,tb-size=512") {
+		t.Errorf("atteso -accel con proprietà, args=%v", res.Args)
+	}
+	if !hasPair(res.Args, "-machine", "q35") {
+		t.Errorf("atteso -machine q35 (due token), args=%v", res.Args)
+	}
+	// whpx,ssd=off
+	c2 := baseCfg()
+	c2.Accel = "whpx,ssd=off"
+	res2, err := Build(c2, Facts{Mode: ModeRun})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasPair(res2.Args, "-accel", "whpx,ssd=off") {
+		t.Errorf("atteso -accel whpx,ssd=off, args=%v", res2.Args)
+	}
+}

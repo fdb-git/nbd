@@ -149,7 +149,7 @@ func (c *Cfg) SetKey(k, v string) error {
 	rv := reflect.ValueOf(c).Elem().FieldByName(fm.name)
 	switch fm.typ {
 	case reflect.String:
-		if len(fm.enums) > 0 && !contains(fm.enums, v) {
+		if len(fm.enums) > 0 && !enumOK(fm.enums, v) {
 			return fmt.Errorf("%s: valore '%s' non ammesso (usa: %s)", key, v, strings.Join(fm.enums, "|"))
 		}
 		rv.SetString(v)
@@ -233,7 +233,7 @@ func (c *Cfg) Validate() []error {
 		switch fm.typ {
 		case reflect.String:
 			val := rv.String()
-			if len(fm.enums) > 0 && val != "" && !contains(fm.enums, val) {
+			if len(fm.enums) > 0 && val != "" && !enumOK(fm.enums, val) {
 				errs = append(errs, fmt.Errorf("%s: '%s' non ammesso (usa: %s)",
 					key, val, strings.Join(fm.enums, "|")))
 			}
@@ -275,6 +275,18 @@ func contains(list []string, v string) bool {
 		if x == v {
 			return true
 		}
+	}
+	return false
+}
+
+// enumOK: valore ammesso; per gli acceleratori è accettata anche la forma con
+// proprietà "base,prop=val,..." (es. "tcg,thread=multi,tb-size=512").
+func enumOK(list []string, v string) bool {
+	if contains(list, v) {
+		return true
+	}
+	if i := strings.IndexByte(v, ','); i > 0 {
+		return contains(list, v[:i])
 	}
 	return false
 }

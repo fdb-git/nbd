@@ -181,3 +181,13 @@ func TestLaunchEnvSkipsAssetsDir(t *testing.T) {
 		t.Errorf("NET_MODE=%q", m["NET_MODE"])
 	}
 }
+
+func TestSetKeyAccelProps(t *testing.T) {
+	var c Cfg
+	if err := c.SetKey("accel", "tcg,thread=multi,tb-size=512"); err != nil {
+		t.Errorf("accel con proprietà rifiutato: %v", err)
+	}
+	if err := c.SetKey("accel", "bogus,thread=multi"); err == nil {
+		t.Error("accel base invalido accettato")
+	}
+}

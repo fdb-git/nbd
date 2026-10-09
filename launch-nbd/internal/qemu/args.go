@@ -98,8 +98,11 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 		}
 	}
 	// fallback a TCG se l'acceleratore primario non è disponibile (come il
-	// launcher di riferimento: -machine q35,accel=whpx:tcg)
-	if accel != "tcg" {
+	// launcher di riferimento: -machine q35,accel=whpx:tcg). Le proprietà accel
+	// (es. tcg,thread=multi,tb-size=512) richiedono la forma a due token -accel.
+	accelBase, accelProps := splitAccelProps(accel)
+	accel = accelBase
+	if accelProps == "" && accel != "tcg" {
 		accel += ":tcg"
 	}
 
@@ -150,7 +153,13 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 	if cpu == "" {
 		cpu = "max"
 	}
-	add("-machine", "q35,accel="+accel)
+	if accelProps != "" {
+		// proprietà accel: forma a due token (-machine q35 + -accel <spec>,<props>)
+		add("-machine", "q35")
+		add("-accel", accel+","+accelProps)
+	} else {
+		add("-machine", "q35,accel="+accel)
+	}
 	add("-cpu", cpu)
 	add("-smp", strconv.Itoa(cfg.CPUs))
 	add("-m", fmt.Sprintf("%dM", cfg.MemMB))
@@ -266,6 +275,14 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 		add("-monitor", monitorSpec(cfg.MonSock))
 	}
 	return r, nil
+}
+
+// splitAccelProps: separa "tcg,thread=multi" in ("tcg", "thread=multi").
+func splitAccelProps(s string) (base, props string) {
+	if i := strings.IndexByte(s, ','); i > 0 {
+		return s[:i], s[i+1:]
+	}
+	return s, ""
 }
 
 // monitorSpec: MON_SOCK è un path (→ socket unix) oppure una spec chardev
@@ -423,8 +440,13 @@ func validateEnums(cfg config.Cfg) error {
 		{"disk_mode", cfg.DiskMode, []string{"direct", "overlay"}},
 	} {
 		found := false
+		val := c.val
+		base := val
+		if i := strings.IndexByte(val, ','); i > 0 {
+			base = val[:i] // ammesse proprietà accel (es. tcg,thread=multi)
+		}
 		for _, v := range c.ok {
-			if c.val == v {
+			if base == v {
 				found = true
 				break
 			}
