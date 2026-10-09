@@ -222,7 +222,10 @@ Display: default **spice** (come il launcher di riferimento): QEMU è headless
 dagli asset (`<dir>/qemu/virt-viewer/bin`) o dal PATH. Audio: default `auto`; su
 Windows sceglie `wasapi` → `dsound` → `sdl` sondando `qemu -audiodev help`; su
 Linux `pipewire`/`pa` dai socket. Accelerazione: `-machine q35,accel=<primario>:tcg`
-(fallback TCG). Firmware UEFI: la copia scrivibile delle OVMF **VARS è
+(fallback TCG). Le **proprietà accel** si passano dalla config, es.
+`--set accel=whpx,ssd=off,kernel-irqchip=on,hyperv=on` (WHPX; `ssd=off` = MMIO
+più veloce) oppure `--set accel=tcg,thread=multi,tb-size=512` (TCG
+multi-thread, MTTCG). Firmware UEFI: la copia scrivibile delle OVMF **VARS è
 persistente** in `<overlay_dir>/ovmf_vars.fd` (creata la prima volta, poi riusata:
 conserva le boot entry `BootOrder`/`Boot####` tra i run). Verificato end-to-end da
 Windows 11 verso un nbdkit remoto (installer Pop!_OS a schermo via SPICE).
