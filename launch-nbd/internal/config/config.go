@@ -284,13 +284,14 @@ func contains(list []string, v string) bool {
 	return false
 }
 
-// enumOK: valore ammesso; per gli acceleratori è accettata anche la forma con
-// proprietà "base,prop=val,..." (es. "tcg,thread=multi,tb-size=512").
+// enumOK: valore ammesso; sono accettate anche le forme con proprietà
+// "base,prop=val,..." e con fallback "base:alt[:alt]" (es. "whpx:tcg",
+// "tcg,thread=multi,tb-size=512").
 func enumOK(list []string, v string) bool {
 	if contains(list, v) {
 		return true
 	}
-	if i := strings.IndexByte(v, ','); i > 0 {
+	if i := strings.IndexAny(v, ",:"); i > 0 {
 		return contains(list, v[:i])
 	}
 	return false

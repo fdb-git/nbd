@@ -191,3 +191,10 @@ func TestSetKeyAccelProps(t *testing.T) {
 		t.Error("accel base invalido accettato")
 	}
 }
+
+func TestSetKeyAccelFallback(t *testing.T) {
+	var c Cfg
+	if err := c.SetKey("accel", "whpx:tcg"); err != nil {
+		t.Errorf("accel con fallback rifiutato: %v", err)
+	}
+}

@@ -102,7 +102,7 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 	// (es. tcg,thread=multi,tb-size=512) richiedono la forma a due token -accel.
 	accelBase, accelProps := splitAccelProps(accel)
 	accel = accelBase
-	if accelProps == "" && accel != "tcg" {
+	if accelProps == "" && accel != "tcg" && !strings.Contains(accel, ":") {
 		accel += ":tcg"
 	}
 
@@ -447,8 +447,8 @@ func validateEnums(cfg config.Cfg) error {
 		found := false
 		val := c.val
 		base := val
-		if i := strings.IndexByte(val, ','); i > 0 {
-			base = val[:i] // ammesse proprietà accel (es. tcg,thread=multi)
+		if i := strings.IndexAny(val, ",:"); i > 0 {
+			base = val[:i] // ammesse proprietà (tcg,thread=multi) e fallback (whpx:tcg)
 		}
 		for _, v := range c.ok {
 			if base == v {

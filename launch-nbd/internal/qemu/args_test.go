@@ -319,3 +319,15 @@ func TestSerialOption(t *testing.T) {
 		}
 	}
 }
+
+func TestAccelFallbackSpec(t *testing.T) {
+	c := baseCfg()
+	c.Accel = "whpx:tcg" // forma del launcher di riferimento
+	res, err := Build(c, Facts{Mode: ModeRun})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasPair(res.Args, "-machine", "q35,accel=whpx:tcg") {
+		t.Errorf("atteso -machine q35,accel=whpx:tcg, args=%v", res.Args)
+	}
+}
