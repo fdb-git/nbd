@@ -1,0 +1,4 @@
+# artefatti di runtime locali (non versionati)
+/overlay/
+/*.out
+serial.log
