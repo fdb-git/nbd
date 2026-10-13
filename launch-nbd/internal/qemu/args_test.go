@@ -300,3 +300,22 @@ func TestAccelProps(t *testing.T) {
 		t.Errorf("atteso -accel whpx,ssd=off, args=%v", res2.Args)
 	}
 }
+
+func TestSerialOption(t *testing.T) {
+	c := baseCfg()
+	c.Serial = "tcp:127.0.0.1:4560,server=on,wait=off"
+	res, err := Build(c, Facts{Mode: ModeRun})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasPair(res.Args, "-serial", "tcp:127.0.0.1:4560,server=on,wait=off") {
+		t.Errorf("atteso -serial <spec>, args=%v", res.Args)
+	}
+	// senza serial: nessun -serial
+	res2, _ := Build(baseCfg(), Facts{Mode: ModeRun})
+	for _, a := range res2.Args {
+		if a == "-serial" {
+			t.Errorf("nessun -serial atteso senza cfg.Serial: %v", res2.Args)
+		}
+	}
+}

@@ -274,6 +274,11 @@ func Build(cfg config.Cfg, f Facts) (Result, error) {
 	if cfg.MonSock != "" {
 		add("-monitor", monitorSpec(cfg.MonSock))
 	}
+
+	// --- console seriale (diagnostica host<->guest) ---------------------------
+	if cfg.Serial != "" {
+		add("-serial", cfg.Serial)
+	}
 	return r, nil
 }
 

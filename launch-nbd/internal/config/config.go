@@ -59,7 +59,12 @@ type Cfg struct {
 
 	// --- monitor ---
 	Monitor bool   `toml:"monitor"`            // -monitor stdio (HMP)
-	MonSock string `toml:"mon_sock,omitempty"` // HMP su socket unix
+	MonSock string `toml:"mon_sock,omitempty"` // HMP su socket unix/tcp
+
+	// --- console seriale (diagnostica host<->guest) ---
+	// Serial: spec passata a -serial (es. "tcp:127.0.0.1:4560,server=on,wait=off",
+	// "file:serial.log", "mon:stdio"). Vuoto = nessuna porta seriale.
+	Serial string `toml:"serial,omitempty"`
 
 	// --- port forward (ripetibile) ---
 	PF []string `toml:"port_forwards,omitempty"`
